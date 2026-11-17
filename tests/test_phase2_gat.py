@@ -284,7 +284,7 @@ class GATModelTest(unittest.TestCase):
         raw2 = np.random.randn(b2, layers2, heads2, n2, n2)
         exp2 = np.exp(raw2 - raw2.max(axis=-1, keepdims=True))
         attn2 = exp2 / exp2.sum(axis=-1, keepdims=True)
-        origin_ns2 = pd.date_range("2012-06-01 08:00", periods=b2, freq="3h").asi8
+        origin_ns2 = pd.date_range("2012-06-01 08:00", periods=b2, freq="3h", unit="ns").asi8
         adj2 = (np.random.rand(n2, n2) > 0.7).astype(np.float32)
         np.fill_diagonal(adj2, 1.0)
 
