@@ -1,6 +1,8 @@
 # METR-LA Forecast Lab (interactive demo)
 
-A static website that walks through the whole project: a 3D map of the 207 sensors, the data and features, the Phase 1 models, the graph models, the case study and the signal simulation. Every model opens into a deep dive with animations and its real configuration, search results and code locations.
+> **Live site:** [https://traffic-flow-two.vercel.app/](https://traffic-flow-two.vercel.app/)
+
+A static website that walks through the whole project: a 3D Los Angeles County map (`34.04°N–34.22°N, 118.54°W–118.18°W`) of the 207 METR-LA sensors with explicit geographic provenance badges, light/dark theme toggle, team role cards, missing-data distribution & time-split visualizers, clickable feature-group inspector, Phase 1 models, graph models (with interactive GAT jam re-weighting & elevated 3D message-passing arcs), pre-registered hypotheses (`H0–H5`) + 60-min onset recall, case-study story moments, rush-hour signal simulation, and a viva Q&A cheat sheet. Every deep dive opens cleanly on click so nothing clutters the initial view.
 
 No build step and no framework. It is plain HTML, CSS and JavaScript, plus three.js from a CDN.
 

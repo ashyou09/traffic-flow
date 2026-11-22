@@ -7,6 +7,7 @@ Index of all Phase 2 and Phase 1 deliverables, plans, technical reports, and ver
 ## Start Here (Final Deliverables)
 
 ### Phase 2
+- **Live Interactive Demo:** [METR-LA Forecast Lab](https://traffic-flow-two.vercel.app/) (3D Los Angeles map, model walkthroughs, hypotheses & signal simulation)
 - [Phase 2 IEEE Paper (PDF)](paper_phase2/phase2_ieee_paper.pdf) · [LaTeX / Overleaf Bundle (ZIP)](paper_phase2/phase2_ieee_source.zip) · [Presentation Slides (PPTX)](paper_phase2/phase2_slides.pptx)
 - [Phase 2 Synthesis & Viva Guide](phase2/person_e_phase2_report.md)
 
