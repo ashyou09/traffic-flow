@@ -10,12 +10,12 @@
 > - The Sensor 717468 case-study figure was hand-drawn and has been removed.
 > - The paper's GAT/DCRNN numbers were typed in. The paper now reads results from `data/metadata/phase2/` and shows "pending" until training and evaluation are done.
 >
-> See `reports/phase2/qa_claims_checklist.md` and `reports/person_e_phase2_report.md`. The training and evaluation steps below are still correct.
+> See `reports/phase2/qa_claims_checklist.md` and `reports/phase2/person_e_phase2_report.md`. The training and evaluation steps below are still correct.
 
 > **Update (2026-11-18): all steps below are done.**
 > - Every model family was trained locally on an Apple M3 (`--device mps`, 11.2 h total) instead of Colab. Free-tier Colab sessions kept dying and GPU allocation was refused, and one search on mixed devices would have been unfair under wall-clock caps.
 > - Training was followed by `phase2_eval_all.py`, the attention statistics, both signal experiments, the paper, the slides and the notebook.
-> - Results: README section P2.3 and `reports/person_e_phase2_report.md`.
+> - Results: README section P2.3 and `reports/phase2/person_e_phase2_report.md`.
 > - Exact commands and timings: `reports/phase2/reproduction.md`.
 > - Picked configs are in `configs/phase2/final/`, checkpoints in `models/phase2/`.
 > - Test count is now 107. The paper also has a measured case-study figure (Fig. 9).
