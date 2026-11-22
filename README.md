@@ -4,6 +4,7 @@ A 5-person team project that predicts **traffic speed** on Los Angeles highways 
 
 > This is an academic study (Phase 1), not a live traffic-control system.
 > Full numbers: [reports/person_e_report.md](reports/person_e_report.md) · IEEE-style paper: [reports/paper/](reports/paper/)
+> Demo link: https://traffic-flow-two.vercel.app/
 
 ---
 
