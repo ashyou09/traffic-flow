@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>METR-LA Forecast Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Interactive 3D walkthrough of a traffic speed forecasting project on METR-LA: data, features, XGBoost, graph neural networks and simulated signal control.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%2312171b%22/%3E%3Crect x=%226%22 y=%2214%22 width=%224%22 height=%2212%22 fill=%22%234fb3bd%22/%3E%3Crect x=%2214%22 y=%228%22 width=%224%22 height=%2218%22 fill=%22%23f2b33d%22/%3E%3Crect x=%2222%22 y=%2218%22 width=%224%22 height=%228%22 fill=%22%23ef6a55%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="shield"><b>METR-LA</b> Traffic forecasting · Phase 1 + Phase 2 · AML project</div>
+    <h1>Seeing a jam before it reaches you</h1>
+    <p class="lede">207 loop detectors under Los Angeles freeways report speed every 5 minutes. We built models that read the <strong>last hour</strong> and forecast speed <strong>5, 15, 30 and 60 minutes ahead</strong>. Phase 1 looked at each sensor alone. In Phase 2 every sensor also listens to its neighbours on the road network. Drag the map, scrub the clock, click any sensor, and open any model to see inside it.</p>
+    <nav class="jump" aria-label="Jump to">
+      <a href="#s1">Data</a><a href="#s2">Features</a><a href="#s3">Phase 1 models</a><a href="#s4">Why graphs</a><a href="#s5">Graph models</a><a href="#s6">Case study</a><a href="#s7">Signal sim</a><a href="#s8">Limits</a>
+    </nav>
+  </header>
+</div>
+
+<div class="stage" id="top">
+  <canvas id="scene" aria-label="3D map of the 207 METR-LA sensors"></canvas>
+  <div class="hud">
+    <div class="clock"><div class="t" id="clk">17:00</div><div class="s" id="clkSub">Average speed at this hour, Mar–Jun 2012</div></div>
+    <div class="modes" role="group" aria-label="Map layer">
+      <button class="chip" data-mode="speed" aria-pressed="true">Speed by hour</button>
+      <button class="chip" data-mode="graph" aria-pressed="false">Road graph</button>
+      <button class="chip" data-mode="pass" aria-pressed="false">Message passing</button>
+      <button class="chip" data-mode="diffuse" aria-pressed="false">DCRNN diffusion</button>
+      <button class="chip" data-mode="error" aria-pressed="false">60-min error</button>
+      <select class="chip" id="errModel" aria-label="Model for error layer" hidden>
+        <option value="dcrnn">DCRNN</option><option value="gat">GAT</option><option value="gru_local">GRU local</option><option value="xgboost_ha">XGBoost + HA</option>
+      </select>
+    </div>
+    <div class="dock">
+      <div class="timebar" id="timebar"><button class="play" id="play" aria-label="Play the day">▶</button><input type="range" id="hour" min="0" max="23.99" step="0.01" value="17" aria-label="Hour of day"><span class="mono" id="hourLbl">17:00</span></div>
+      <div class="legend"><div id="legTitle">Mean speed (source units, likely mph)</div><div class="ramp" id="legRamp"></div><div class="ramp-row"><span id="legLo">20</span><span id="legHi">70</span></div><div style="margin-top:4px" id="legNote">Pillar height = drop below 70</div></div>
+    </div>
+    <div class="card" id="card" hidden>
+      <button class="x" id="cardX" aria-label="Close sensor details">×</button>
+      <div class="label">Sensor</div>
+      <h3 id="cId">—</h3>
+      <div class="kv" id="cKv"></div>
+      <div class="hint" id="cHint"></div>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+  <div class="modenote"><span class="label" id="mnLabel">Speed by hour</span><p id="mnText"></p></div>
+</div>
+
+<nav class="railnav" aria-label="Sections" id="rail"></nav>
+
+<main class="wrap">
+
+<!-- 01 ---------------------------------------------------------------- -->
+<section class="stop" id="s1">
+  <div class="stop-head"><div class="num">01</div><div><div class="who">Person A · data understanding &amp; quality</div><h2>The raw signal</h2></div></div>
+  <div class="cols">
+    <div class="prose">
+      <p>METR-LA holds 34,272 readings for each of 207 sensors, from 1 March to 27 June 2012. Before any model, we checked that the file can be trusted: a SHA-256 fingerprint, no duplicate timestamps, no gaps in the 5-minute grid, no negative values.</p>
+      <p>The catch is that <b>8.1% of readings are exactly 0</b>. A freeway at a true 0 mph for hours is rare, so we follow the DCRNN benchmark: a zero means "sensor did not report". Zeros are flagged, never filled in as a target, and never scored.</p>
+      <p class="quiet">The curve is the whole network's mean speed by hour. The low point is 17:00 at 49.9, and the high is 22:00 at 63.0.</p>
+    </div>
+    <div class="stack">
+      <div class="facts">
+        <div><b>207</b><span>loop detectors</span></div>
+        <div><b>5 min</b><span>between readings</span></div>
+        <div><b>34,272</b><span>time steps per sensor</span></div>
+        <div><b>575,302</b><span>zero readings treated as missing</span></div>
+      </div>
+      <div class="panel"><span class="label">Network mean speed by hour of day</span><svg id="hourChart" viewBox="0 0 560 200" role="img" aria-label="Mean speed by hour"></svg></div>
+    </div>
+  </div>
+</section>
+
+<!-- 02 ---------------------------------------------------------------- -->
+<section class="stop" id="s2">
+  <div class="stop-head"><div class="num">02</div><div><div class="who">Person B · features &amp; leak-free split</div><h2>One hour in, four answers out</h2></div></div>
+  <div class="cols">
+    <div class="prose">
+      <p>Every training example is a sliding window. The model sees the last 12 readings (one hour) and must predict the reading 1, 3, 6 and 12 steps later. From those 12 numbers we build 32 features: lags, rolling statistics, trend, time of day and missingness.</p>
+      <p>The split follows time: the oldest 70% trains, the next 10% tunes, and the last 20% is the exam, opened once. An example is kept only when all four of its targets fall inside the same split, so no answer leaks across the boundary.</p>
+      <p class="quiet">Drag the slider. The window is real data from sensor 717468 on Monday 11 June 2012, a test-set day. The feature values are worked out live from the cells shown. The GRU deep dive in section 05 reads this same window.</p>
+    </div>
+    <div class="panel">
+      <span class="label">Sliding window · sensor 717468 · <span id="winTime">—</span></span>
+      <svg id="winChart" viewBox="0 0 560 170" role="img" aria-label="Speed series with the input window highlighted"></svg>
+      <div class="strip" id="strip"></div>
+      <input class="range" type="range" id="winPos" min="11" max="90" value="34" aria-label="Move the window">
+      <div class="featgrid" id="feats"></div>
+      <span class="label" style="margin-top:16px;display:block">The 32 features, by group</span>
+      <div class="groupbar">
+        <div style="flex:12;background:#e9b44c">Lags 12</div>
+        <div style="flex:8;background:#7cc3c9">Rolling 8</div>
+        <div style="flex:3;background:#b9cf7a">Trend 3</div>
+        <div style="flex:7;background:#c9a9d9">Time 7</div>
+        <div style="flex:2;background:#e5a08f">Miss 2</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 ---------------------------------------------------------------- -->
+<section class="stop" id="s3">
+  <div class="stop-head"><div class="num">03</div><div><div class="who">Persons C, D, E · baselines, trees, fair scoring</div><h2>Phase 1: every sensor on its own</h2></div></div>
+  <div class="cols">
+    <div class="prose">
+      <p><b>Persistence</b> says the future equals now. <b>Historical average</b> says the future equals the usual speed for this sensor, weekday and time. Both are honest bars to beat.</p>
+      <p><b>Random Forest</b> averages many independent trees. <b>XGBoost</b> grows trees one after another, each fixing the last one's mistakes. Adding four historical-average features ("how far is now from normal?") gave <b>XGBoost + HA</b>, the Phase 1 winner at every horizon.</p>
+      <p>All five models were re-scored on the same 1.24 million test targets. At 60 minutes, XGBoost + HA cuts error by 31% against persistence (5.38 → 3.69).</p>
+      <p class="quiet">Look at how the lines fan out. The further ahead you forecast, the more a single sensor's own past runs out of road.</p>
+    </div>
+    <div class="panel">
+      <span class="label">Test MAE by horizon (lower is better)</span>
+      <div class="toggles" id="p1toggles"></div>
+      <svg id="p1Chart" viewBox="0 0 560 280" role="img" aria-label="MAE by horizon for Phase 1 models"></svg>
+    </div>
+  </div>
+
+  <div class="dives">
+    <span class="label">Open a model</span>
+
+    <details class="dive" id="dv-xgb">
+      <summary><div class="what"><h3>Inside XGBoost</h3><p>Trees added one at a time, each one fitted to what the others still get wrong.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Boosting, live <span class="tag toy">toy</span></span>
+            <svg id="boostChart" viewBox="0 0 560 300" role="img" aria-label="Boosting animation"></svg>
+            <div class="btnrow"><button class="btn primary" id="boostPlay">Play</button><button class="btn" id="boostStep">+1 tree</button><button class="btn" id="boostReset">Reset</button><span class="readout" id="boostRead"></span></div>
+            <p class="cap">Fitted live in your browser on the 11 June curve, speed against time, using one-split trees and learning rate 0.3. The bottom strip is the newest tree's correction. The real model uses depth-8 trees on 32 features over 4.6 million rows, but the loop is the same.</p>
+          </div>
+          <div class="stack">
+            <ol class="steps" id="boostSteps">
+              <li>Start from one guess for everybody</li>
+              <li>Measure what is still wrong: the <b>residuals</b></li>
+              <li>Fit a small tree to the residuals</li>
+              <li>Add a shrunken copy of it: <code>F ← F + η·tree</code></li>
+              <li>Repeat until validation MAE stops improving</li>
+            </ol>
+            <dl class="spec" id="xgbSpec"></dl>
+          </div>
+        </div>
+        <div class="dive-grid">
+          <div class="viz">
+            <span class="label">What the 60-minute model leans on <span class="tag real">real</span></span>
+            <div class="toggles" id="impToggles"><button class="tg solo" data-k="xgb32" aria-pressed="false">XGBoost 32</button><button class="tg solo" data-k="xgb_ha" aria-pressed="true">XGBoost + HA 36</button></div>
+            <svg id="impChart" viewBox="0 0 520 300" role="img" aria-label="Feature importance by gain"></svg>
+            <p class="cap" id="impCap"></p>
+          </div>
+          <div class="stack">
+            <details class="sub"><summary>The four historical-average features</summary><div class="sub-body">
+              <p class="cap">Built from training data only (up to 23 May 2012, 07:05). <code>ha_target</code> is the usual speed for this sensor at the target's weekday and time. <code>ha_delta</code> is how much that usual speed changes between now and the target time. <code>anomaly_now</code> is how far the current speed sits from normal for right now. The fourth is the usual speed now. With these features, a 60-minute forecast can lean on "traffic tends to return to normal", which is exactly what the 32-feature model lacks.</p>
+            </div></details>
+            <details class="sub"><summary>Trees used per horizon (early stopping)</summary><div class="sub-body"><table id="iterTable"></table></div></details>
+            <details class="sub"><summary>Where it lives in the code</summary><div class="sub-body"><pre>src/models/xgboost_model.py     training + HA features
+src/models/baselines.py         persistence, historical average
+models/person_c/xgb_ha_60min.json   saved booster
+scripts/run_person_c.py --predict-only</pre></div></details>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="dive" id="dv-rf">
+      <summary><div class="what"><h3>Inside Random Forest</h3><p>Many trees trained on different random samples, then averaged. Plus: which feature groups matter.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Bagging, live <span class="tag toy">toy</span></span>
+            <svg id="forestChart" viewBox="0 0 560 280" role="img" aria-label="Random forest animation"></svg>
+            <div class="btnrow"><button class="btn primary" id="forestPlay">Grow forest</button><button class="btn" id="forestReset">Resample</button><span class="readout" id="forestRead"></span></div>
+            <p class="cap">Each thin line is a depth-3 tree trained on a random resample of the same curve. Alone, each one is jumpy. Their average (bold) is smoother. Boosting builds trees in sequence; a forest builds them independently and lets the errors cancel out.</p>
+          </div>
+          <div class="stack">
+            <dl class="spec" id="rfSpec"></dl>
+            <details class="sub" open><summary>Ablation: add feature groups one at a time <span class="tag real">real</span></summary><div class="sub-body">
+              <svg id="ablRF" viewBox="0 0 420 220" role="img" aria-label="Random forest ablation"></svg>
+              <p class="cap">Test MAE. Going from lags alone (A) to lags + time (B) is the biggest step at 60 minutes: 5.38 → 4.90. Rolling statistics (C) help a little more, and trend + missingness (D) add nothing measurable.</p>
+            </div></details>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="dive" id="dv-boot">
+      <summary><div class="what"><h3>Is the win real? The block bootstrap</h3><p>Resample the 24 test days 2,000 times and see whether the gap ever closes.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Paired day-block bootstrap, run in your browser <span class="tag real">real data</span></span>
+            <div class="toggles" id="bootPairs"></div>
+            <div class="days" id="bootDays"></div>
+            <svg id="bootHist" viewBox="0 0 560 190" role="img" aria-label="Bootstrap distribution"></svg>
+            <div class="btnrow"><button class="btn primary" id="bootRun">Run 2,000 resamples</button><span class="readout" id="bootRead"></span></div>
+          </div>
+          <div class="stack">
+            <ol class="steps" id="bootSteps">
+              <li>For each test day, sum each model's absolute errors at 60 min</li>
+              <li>Draw 12 random 2-day blocks (with replacement, wrapping around): 24 days</li>
+              <li>Recompute the MAE gap on that resampled set of days</li>
+              <li>Repeat 2,000 times. The middle 95% of gaps is the interval</li>
+              <li>If the whole interval sits above 0, the win is not luck</li>
+            </ol>
+            <p class="cap">Days, not individual readings, are resampled, because readings within one day are strongly correlated. Blocks of 2 days keep some of that day-to-day correlation. The random draws here differ from the project's (numpy, seed 42), so the edges of the interval can move by a few hundredths. The official interval is shown for comparison.</p>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- 04 ---------------------------------------------------------------- -->
+<section class="stop" id="s4">
+  <div class="stop-head"><div class="num">04</div><div><div class="who">The gap Phase 1 left open</div><h2>A jam travels against the traffic</h2></div></div>
+  <div class="cols">
+    <div class="prose">
+      <p>When a freeway clogs, the slow zone grows backwards, toward the cars still arriving. A sensor that only reads its own history cannot see the slowdown until it is already there.</p>
+      <p>Its downstream neighbour saw it minutes earlier. A graph model passes messages along the road links, so each sensor's forecast can use what the sensors around it are reading right now.</p>
+      <p class="quiet">This animation illustrates the idea; it is not model output. Traffic flows left to right while the jam creeps right to left. Watch sensor C.</p>
+      <p><button class="chip" id="toPass">Show message passing on the real map ↑</button></p>
+    </div>
+    <div class="panel">
+      <span class="label">Illustration · five sensors on one corridor</span>
+      <svg id="road" viewBox="0 0 560 170" role="img" aria-label="Animation of a jam moving upstream past five sensors"></svg>
+      <div class="road-cap">
+        <div class="verdict"><b>Local model at C (own history)</b><div class="say" id="vLocal">—</div></div>
+        <div class="verdict"><b>Graph model at C (+ neighbours)</b><div class="say" id="vGraph">—</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 ---------------------------------------------------------------- -->
+<section class="stop" id="s5">
+  <div class="stop-head"><div class="num">05</div><div><div class="who">Members 1–4 · pipeline, GAT, DCRNN, controls, evaluation</div><h2>Phase 2: let the road graph talk</h2></div></div>
+  <div class="cols">
+    <div class="prose">
+      <p>The graph has 207 nodes and road-distance links, weighted by a Gaussian kernel of driving distance. Inputs become a tensor of 12 steps × 207 sensors × 7 channels: scaled speed, a missing flag, hour and weekday as sine/cosine, and a weekend flag.</p>
+      <p><b>GAT</b> (Graph Attention Network) learns, for every sensor, how much to listen to each neighbour. <b>DCRNN</b> (Diffusion Convolutional RNN) spreads information along the road links in both directions inside a recurrent encoder–decoder.</p>
+      <p>To prove the road graph itself helps, we trained <b>controls</b>: the same models with only self-links (identity), with a shuffled graph (right degrees, wrong neighbours), and a GRU with no graph at all.</p>
+      <p class="quiet">Result: the real graph wins clearly. A shuffled graph also helped GAT a little, so not all of GAT's gain comes from true road links. Hypothesis H2 was contradicted, and we report that.</p>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <span class="label">60-minute test MAE · does the graph matter?</span>
+        <svg id="ablChart" viewBox="0 0 560 300" role="img" aria-label="60-minute MAE for graph models and controls"></svg>
+      </div>
+      <div class="panel">
+        <span class="label">Paired day-block bootstrap at 60 min · MAE reduction, 95% interval</span>
+        <div class="ci" id="ciList"></div>
+      </div>
+    </div>
+  </div>
+  <div class="panel scroll" style="margin-top:24px">
+    <span class="label">Test MAE, all horizons (Phase 2: mean over seeds 42/43/44)</span>
+    <table id="fullTable"></table>
+  </div>
+
+  <div class="dives">
+    <span class="label">Open a model · the selected sensor follows your click on the 3D map</span>
+
+    <details class="dive" id="dv-gru">
+      <summary><div class="what"><h3>Inside GRU local (the no-graph control)</h3><p>A recurrent cell reads the hour step by step and keeps a running memory.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Unrolled over the 12 input steps <span class="tag toy">untrained cell</span> <span class="tag real">real input + forecast</span></span>
+            <svg id="gruViz" viewBox="0 0 560 300" role="img" aria-label="GRU unrolled over 12 steps"></svg>
+            <div class="btnrow"><button class="btn primary" id="gruPlay">Play</button><span class="readout" id="gruRead"></span></div>
+            <p class="cap">Input is the section 02 window, scaled exactly as in training (mean 58.584, std 12.823). The cell has 8 units with fixed random weights so you can watch the mechanics. The real cell has 64 trained units. The forecast at the bottom is the trained model's real test prediction for this moment.</p>
+          </div>
+          <div class="stack">
+            <ol class="steps" id="gruSteps">
+              <li><b>Update gate</b> <code>z</code>: how much old memory to keep</li>
+              <li><b>Reset gate</b> <code>r</code>: how much old memory to use for the new candidate</li>
+              <li><b>Candidate</b> <code>ñ = tanh(W·x + r ⊙ U·h)</code></li>
+              <li><b>Mix</b> <code>h ← (1−z) ⊙ ñ + z ⊙ h</code></li>
+              <li>After step 12, a small head predicts the <b>change</b> from the last speed, for all 4 horizons</li>
+            </ol>
+            <dl class="spec" id="gruSpec"></dl>
+            <details class="sub"><summary>Hyperparameter search (validation MAE)</summary><div class="sub-body scroll"><table id="srch-gru_local"></table></div></details>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="dive" id="dv-gat">
+      <summary><div class="what"><h3>Inside GAT</h3><p>Every sensor scores its neighbours, turns the scores into weights, and mixes their messages.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">One attention layer at sensor <b id="gatSensor" class="mono">—</b> <span class="tag real">real neighbours</span></span>
+            <svg id="gatViz" viewBox="0 0 560 330" role="img" aria-label="Graph attention around the selected sensor"></svg>
+            <div class="btnrow"><button class="btn primary" id="gatPlay">Play layer</button><button class="btn" id="gatPrev">‹ Step</button><button class="btn" id="gatNext">Step ›</button><span class="readout" id="gatRead"></span></div>
+            <p class="cap">Neighbours are this sensor's real road links. The self-weight comes from the trained model's measured attention for this sensor; the rest of the weight is spread evenly over the neighbours for display.</p>
+          </div>
+          <div class="stack">
+            <ol class="steps" id="gatSteps">
+              <li>GRU encoder turns each sensor's last hour into a vector <code>h</code></li>
+              <li>Project it: <code>Wh</code>, split into 2 heads of 32</li>
+              <li>Score each pair: <code>e = LeakyReLU(a·Whᵢ + b·Whⱼ)</code></li>
+              <li>Mask non-neighbours to −∞, keep the self-link</li>
+              <li>Softmax over the neighbours gives weights <code>α</code> that sum to 1</li>
+              <li>Weighted sum of messages, plus residual and LayerNorm</li>
+              <li>Head predicts the change from the last speed for 4 horizons</li>
+            </ol>
+          </div>
+        </div>
+        <div class="dive-grid">
+          <div class="viz">
+            <span class="label">Where this sensor's attention went (test period) <span class="tag real">real</span></span>
+            <svg id="gatMass" viewBox="0 0 520 150" role="img" aria-label="Attention mass for the selected sensor"></svg>
+            <svg id="gatHist" viewBox="0 0 520 150" role="img" aria-label="Self-attention across all sensors"></svg>
+            <p class="cap">Downstream and upstream overlap because most links run both ways, so they do not add up to the neighbour total. The histogram shows the self-weight for all 207 sensors, with the selected one marked.</p>
+          </div>
+          <div class="stack">
+            <dl class="spec" id="gatSpec"></dl>
+            <details class="sub"><summary>Hyperparameter search (validation MAE)</summary><div class="sub-body scroll"><table id="srch-gat"></table></div></details>
+            <details class="sub"><summary>Where it lives in the code</summary><div class="sub-body"><pre>src/phase2/models/gat.py        GATLayer, masked softmax
+configs/phase2/final/gat.yaml   picked config
+scripts/phase2_gat_attention_stats.py</pre></div></details>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="dive" id="dv-dcrnn">
+      <summary><div class="what"><h3>Inside DCRNN</h3><p>Information diffuses along the roads, hop by hop, inside a recurrent encoder–decoder.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Diffusion from sensor <b id="dcSensor" class="mono">—</b>, computed on the real graph <span class="tag real">real</span></span>
+            <svg id="dcMap" viewBox="0 0 560 330" role="img" aria-label="Diffusion weights on a map"></svg>
+            <div class="btnrow">
+              <span class="readout">Hops K</span>
+              <button class="tg solo" data-k="1" aria-pressed="false">1</button><button class="tg solo" data-k="2" aria-pressed="true">2 (used)</button><button class="tg solo" data-k="3" aria-pressed="false">3</button>
+              <span class="readout" style="margin-left:8px">Direction</span>
+              <select class="btn" id="dcDir" aria-label="Diffusion direction"><option value="both">both</option><option value="fwd">forward</option><option value="rev">reverse</option></select>
+              <button class="btn" id="dcTo3d">Show on 3D map ↑</button>
+            </div>
+            <div class="readout" id="dcRead"></div>
+          </div>
+          <div class="stack">
+            <ol class="steps">
+              <li>Forward transition <code>P<sub>f</sub> = D<sub>out</sub>⁻¹ A</code>: read the sensors you drive towards</li>
+              <li>Reverse transition <code>P<sub>r</sub> = D<sub>in</sub>⁻¹ Aᵀ</code>: read the sensors that drive into you</li>
+              <li>Powers <code>P¹ … Pᴷ</code> reach K hops; each gets its own learned weights</li>
+              <li>These graph convolutions replace the matrix products inside a GRU cell (DCGRU)</li>
+            </ol>
+            <p class="cap">The map shows row <i>i</i> of <code>Σ Pᵏ</code>: how much the selected sensor reads from every other sensor. It is computed here from <code>adj_mx.pkl</code>, the same matrix the model was trained with.</p>
+          </div>
+        </div>
+        <div class="viz">
+          <span class="label">Encoder–decoder, unrolled <span class="tag real">architecture</span></span>
+          <svg id="encdec" viewBox="0 0 1000 150" role="img" aria-label="DCRNN encoder decoder"></svg>
+          <p class="cap">The encoder reads the 12 past steps for all 207 sensors at once. The decoder then steps 12 times into the future, and steps 1, 3, 6 and 12 become the 5, 15, 30 and 60-minute forecasts.</p>
+        </div>
+        <div class="dive-grid">
+          <dl class="spec" id="dcSpec"></dl>
+          <div class="stack">
+            <details class="sub"><summary>Hyperparameter search (validation MAE)</summary><div class="sub-body scroll"><table id="srch-dcrnn"></table></div></details>
+            <details class="sub"><summary>Where it lives in the code</summary><div class="sub-body"><pre>src/phase2/models/dcrnn.py      DiffusionConv, DCGRUCell
+src/phase2/graph.py             adjacency + variants
+configs/phase2/final/dcrnn.yaml picked config</pre></div></details>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="dive" id="dv-ctl">
+      <summary><div class="what"><h3>The controls: is it really the road graph?</h3><p>Same model, three graphs. Only one of them is the real road network.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Links of sensor <b id="ctlSensor" class="mono">—</b> under each graph</span>
+            <div class="toggles" id="ctlToggles"><button class="tg solo" data-g="real" aria-pressed="true">Real road graph</button><button class="tg solo" data-g="identity" aria-pressed="false">Identity</button><button class="tg solo" data-g="shuffled" aria-pressed="false">Shuffled</button></div>
+            <svg id="ctlMap" viewBox="0 0 560 330" role="img" aria-label="Graph variants on a map"></svg>
+          </div>
+          <div class="stack">
+            <div id="ctlText" class="prose"></div>
+            <p class="cap">The shuffle here is drawn in your browser with its own random derangement. The project used a fixed derangement (seed 0) from <code>src/phase2/graph.py</code>. Both keep every sensor's number of links and change who they link to.</p>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- 06 ---------------------------------------------------------------- -->
+<section class="stop" id="s6">
+  <div class="stop-head"><div class="num">06</div><div><div class="who">Case study · real test predictions</div><h2>One Monday on sensor 717468</h2></div></div>
+  <div class="cols">
+    <div class="prose">
+      <p>11 June 2012, 14:00 to 23:00. This sensor sits in a heavy evening jam, with speeds near 10 for hours, then recovers sharply around 20:00. The grey line is what happened. Each coloured line is a model's forecast made 15 or 60 minutes earlier.</p>
+      <p>Persistence is always late by exactly the horizon. Recoveries are the hard part, and that is where models disagree most. Switch to 60 minutes and watch them guess at the moment the jam clears.</p>
+      <p class="quiet">One sensor and one day, picked to show behaviour. The averages in section 05 are the result, not this chart. Hover the chart to read values.</p>
+    </div>
+    <div class="panel">
+      <div class="toggles" id="hzToggles"><button class="tg solo" data-h="15min" aria-pressed="false">15 min ahead</button><button class="tg solo" data-h="60min" aria-pressed="true">60 min ahead</button></div>
+      <div class="toggles" id="csToggles"></div>
+      <svg id="caseChart" viewBox="0 0 560 280" role="img" aria-label="Actual versus forecast speed for sensor 717468"></svg>
+      <div class="readout" id="caseRead">&nbsp;</div>
+    </div>
+  </div>
+</section>
+
+<!-- 07 ---------------------------------------------------------------- -->
+<section class="stop" id="s7">
+  <div class="stop-head"><div class="num">07</div><div><div class="who">Member 5 · simulated signal control</div><h2>From a forecast to a green light</h2></div></div>
+  <div class="cols">
+    <div class="prose">
+      <p>Does a better forecast help a traffic signal? We simulated one signalised approach, driven by real test-period speeds from the 30 most congested sensors and by each model's real forecasts: 3,780 runs over 18 weekdays, 06:00–21:00.</p>
+      <p>The big win is <b>adaptive versus fixed timing</b>: from 2,179 seconds of mean delay per vehicle down to about 27. Which forecast feeds the controller matters far less. Even a perfect forecast saves only 0.40 s against XGBoost + HA.</p>
+      <p class="quiet">Software only. Arrivals are generated from speed by an assumed rule. Nothing was tested on a real signal.</p>
+    </div>
+    <div class="stack">
+      <div class="panel"><span class="label">Mean delay per vehicle, seconds</span><svg id="simBig" viewBox="0 0 560 120" role="img" aria-label="Fixed timing versus adaptive delay"></svg></div>
+      <div class="panel"><span class="label">Zoom: adaptive controllers only (axis starts at 26 s)</span><svg id="simZoom" viewBox="0 0 560 210" role="img" aria-label="Delay by forecast source"></svg></div>
+    </div>
+  </div>
+  <div class="dives">
+    <details class="dive" id="dv-sig">
+      <summary><div class="what"><h3>Watch the two controllers</h3><p>Same arrivals, two signals: one on a fixed clock, one that stretches green when the queue and forecast say so.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="viz">
+          <span class="label">Signal simulation <span class="tag toy">illustration</span></span>
+          <canvas class="sim" id="sigCanvas" aria-label="Animated comparison of fixed and adaptive signal timing"></canvas>
+          <div class="btnrow"><button class="btn primary" id="sigPlay">Pause</button><button class="btn" id="sigReset">Restart</button><span class="readout" id="sigRead"></span></div>
+          <p class="cap">A simplified animation of the policy in <code>src/phase2/signal_sim/</code>. Cars arrive in a rush-hour wave. The fixed signal gives 50% green no matter what. The adaptive one uses the current queue plus a 15/30-minute speed forecast to set the next cycle's green time. The project's numbers come from the full simulation, not from this animation.</p>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- 08 ---------------------------------------------------------------- -->
+<section class="stop" id="s8">
+  <div class="stop-head"><div class="num">08</div><div><div class="who">What we can and cannot claim</div><h2>Limits, and how to run it</h2></div></div>
+  <ul class="limits">
+    <li><b>Units and clock.</b> Speeds are in source units (likely mph). The timezone was never officially confirmed.</li>
+    <li><b>One city, one season.</b> One chronological split, tested on June 2012. Intervals are not adjusted for multiple comparisons.</li>
+    <li><b>Maybe under-trained.</b> GAT finals stopped at the 60-epoch limit and DCRNN at its 50-minute cap (14 epochs).</li>
+    <li><b>Not a fair graph test vs XGBoost + HA.</b> XGBoost + HA gets historical-average features that the deep models do not.</li>
+    <li><b>Attention is not causation.</b> Attention weights show what the model used, not how traffic really spreads.</li>
+    <li><b>Simulated signals.</b> Every signal-control number comes from software.</li>
+  </ul>
+  <div class="cols" style="margin-top:32px">
+    <div class="prose">
+      <h3>Reproduce</h3>
+      <p class="quiet">Phase 1 files are frozen, and the Phase 2 scorer reproduces every Phase 1 metric exactly. Training took 11.2 hours on an Apple M3 (MPS). There are 107 Phase 2 tests.</p>
+    </div>
+    <pre>pip install -r requirements-phase2.txt
+python scripts/complete_phase1.py                    # Phase 1 end to end
+python -m src.phase2.cli all --runs configs/phase2/runs_gat.yaml
+python -m src.phase2.cli all --runs configs/phase2/runs_dcrnn.yaml
+python scripts/phase2_eval_all.py                    # score everything
+python scripts/phase2_run_signal_sim.py              # signal simulation
+python -m unittest discover -s tests -p "test_phase2_*.py"</pre>
+  </div>
+</section>
+</main>
+<footer class="wrap">Every number on this page is read from <code>data/metadata/</code> and <code>configs/</code> in the project repository by <code>demo/build_demo.py</code>. Panels marked <span class="tag toy">toy</span> or <span class="tag toy">illustration</span> show a mechanism, not a project result. Use ← → or PgUp/PgDn to step through the sections when presenting.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/dives.js"></script>
+</body>
+</html>
