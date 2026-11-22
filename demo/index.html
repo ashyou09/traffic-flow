@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>METR-LA Forecast Lab</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Interactive 3D walkthrough of a traffic speed forecasting project on METR-LA: data, features, XGBoost, graph neural networks and simulated signal control.">
+<meta name="description" content="Interactive 3D walkthrough of a traffic speed forecasting project on METR-LA (Los Angeles County): data, features, XGBoost, graph neural networks and simulated signal control.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%2312171b%22/%3E%3Crect x=%226%22 y=%2214%22 width=%224%22 height=%2212%22 fill=%22%234fb3bd%22/%3E%3Crect x=%2214%22 y=%228%22 width=%224%22 height=%2218%22 fill=%22%23f2b33d%22/%3E%3Crect x=%2222%22 y=%2218%22 width=%224%22 height=%228%22 fill=%22%23ef6a55%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,22 +14,79 @@
 </head>
 <body>
 
+<div class="topbar">
+  <div class="wrap topbar-in">
+    <div class="shield"><b>METR-LA</b> Los Angeles County, CA · Phase 1 + 2</div>
+    <nav class="jump" aria-label="Jump to section">
+      <a href="#top">3D Map</a>
+      <a href="#s1">01 Data</a>
+      <a href="#s2">02 Features</a>
+      <a href="#s3">03 Phase 1</a>
+      <a href="#s4">04 Why Graphs</a>
+      <a href="#s5">05 Graph Models</a>
+      <a href="#s6">06 Case Study</a>
+      <a href="#s7">07 Signal Sim</a>
+      <a href="#s8">08 Limits &amp; Q&amp;A</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle light or dark theme">Light / Dark</button>
+  </div>
+</div>
+
 <div class="wrap">
   <header class="top">
-    <div class="shield"><b>METR-LA</b> Traffic forecasting · Phase 1 + Phase 2 · AML project</div>
-    <h1>Seeing a jam before it reaches you</h1>
-    <p class="lede">207 loop detectors under Los Angeles freeways report speed every 5 minutes. We built models that read the <strong>last hour</strong> and forecast speed <strong>5, 15, 30 and 60 minutes ahead</strong>. Phase 1 looked at each sensor alone. In Phase 2 every sensor also listens to its neighbours on the road network. Drag the map, scrub the clock, click any sensor, and open any model to see inside it.</p>
-    <nav class="jump" aria-label="Jump to">
-      <a href="#s1">Data</a><a href="#s2">Features</a><a href="#s3">Phase 1 models</a><a href="#s4">Why graphs</a><a href="#s5">Graph models</a><a href="#s6">Case study</a><a href="#s7">Signal sim</a><a href="#s8">Limits</a>
-    </nav>
+    <div class="hero-row">
+      <h1>Seeing a jam before it reaches you</h1>
+      <div class="readout">207 LA sensors · 34,272 steps · <b>Mar–Jun 2012</b> · 1,722 directed road links</div>
+    </div>
+    <p class="lede">207 loop detectors on highways in <strong>Los Angeles County, California</strong> record traffic speed every 5 minutes. Models read the <strong>last 1 hour</strong> (12 steps) to predict <strong>5, 15, 30, and 60 minutes ahead</strong> — first alone (Phase 1), then listening to road neighbours (Phase 2). Everything heavy stays neatly folded below until you click to explore it.</p>
+
+    <details class="dive team-bar" id="dv-team">
+      <summary>
+        <div class="what">
+          <h3>Team Roles &amp; Dataset Contract — Click to Unfold</h3>
+          <p>Who built what across all 5 members (Pankaj, Ashutosh, Narendra, Shreya, Ranvendra) + METR-LA provenance.</p>
+        </div>
+        <span class="chev" aria-hidden="true"></span>
+      </summary>
+      <div class="dive-body">
+        <div class="team-tabs" id="teamTabs">
+          <button class="tg solo" data-m="0" aria-pressed="true">1 · Pankaj (Data &amp; Core)</button>
+          <button class="tg solo" data-m="1" aria-pressed="false">2 · Ashutosh (Features &amp; GAT)</button>
+          <button class="tg solo" data-m="2" aria-pressed="false">3 · Narendra (XGBoost &amp; DCRNN)</button>
+          <button class="tg solo" data-m="3" aria-pressed="false">4 · Shreya (RF &amp; Evaluation)</button>
+          <button class="tg solo" data-m="4" aria-pressed="false">5 · Ranvendra (Signal &amp; Paper)</button>
+        </div>
+        <div class="team-card" id="teamCard"></div>
+      </div>
+    </details>
   </header>
 </div>
 
 <div class="stage" id="top">
-  <canvas id="scene" aria-label="3D map of the 207 METR-LA sensors"></canvas>
+  <canvas id="scene" aria-label="3D map of the 207 METR-LA sensors in Los Angeles County"></canvas>
   <div class="hud">
-    <div class="clock"><div class="t" id="clk">17:00</div><div class="s" id="clkSub">Average speed at this hour, Mar–Jun 2012</div></div>
-    <div class="modes" role="group" aria-label="Map layer">
+    <div class="hud-left">
+      <div class="hud-tl">
+        <div class="clock">
+          <div class="t" id="clk">17:00</div>
+          <div class="s" id="clkSub">Average speed at this hour, Mar–Jun 2012</div>
+        </div>
+        <div class="geo-badge">
+          <b>Los Angeles County, CA · METR-LA (PeMS)</b>
+          <span>207 sensors · 34.04–34.22°N, 118.54–118.18°W · Mar–Jun 2012</span>
+        </div>
+      </div>
+
+      <div class="card" id="card" hidden>
+        <button class="x" id="cardX" aria-label="Close sensor details">×</button>
+        <div class="label">Los Angeles Sensor</div>
+        <h3 id="cId">—</h3>
+        <div class="kv" id="cKv"></div>
+        <div class="hint" id="cHint"></div>
+      </div>
+    </div>
+
+    <div class="modes" role="group" aria-label="Map layer and sensor selector">
       <button class="chip" data-mode="speed" aria-pressed="true">Speed by hour</button>
       <button class="chip" data-mode="graph" aria-pressed="false">Road graph</button>
       <button class="chip" data-mode="pass" aria-pressed="false">Message passing</button>
@@ -38,20 +95,31 @@
       <select class="chip" id="errModel" aria-label="Model for error layer" hidden>
         <option value="dcrnn">DCRNN</option><option value="gat">GAT</option><option value="gru_local">GRU local</option><option value="xgboost_ha">XGBoost + HA</option>
       </select>
+      <select class="chip" id="sensorPick" aria-label="Jump to featured sensor">
+        <option value="case">Focus: 717468 (Case study)</option>
+        <option value="hub">Focus: Most connected hub</option>
+        <option value="gain">Focus: Biggest DCRNN gain</option>
+        <option value="miss">Focus: Highest outage %</option>
+      </select>
     </div>
+
     <div class="dock">
-      <div class="timebar" id="timebar"><button class="play" id="play" aria-label="Play the day">▶</button><input type="range" id="hour" min="0" max="23.99" step="0.01" value="17" aria-label="Hour of day"><span class="mono" id="hourLbl">17:00</span></div>
-      <div class="legend"><div id="legTitle">Mean speed (source units, likely mph)</div><div class="ramp" id="legRamp"></div><div class="ramp-row"><span id="legLo">20</span><span id="legHi">70</span></div><div style="margin-top:4px" id="legNote">Pillar height = drop below 70</div></div>
-    </div>
-    <div class="card" id="card" hidden>
-      <button class="x" id="cardX" aria-label="Close sensor details">×</button>
-      <div class="label">Sensor</div>
-      <h3 id="cId">—</h3>
-      <div class="kv" id="cKv"></div>
-      <div class="hint" id="cHint"></div>
+      <div class="timebar" id="timebar">
+        <button class="play" id="play" aria-label="Play the day">▶</button>
+        <input type="range" id="hour" min="0" max="23.99" step="0.01" value="17" aria-label="Hour of day">
+        <span class="mono" id="hourLbl">17:00</span>
+      </div>
+      <div class="legend">
+        <div class="legend-geo"><span>LA County · 207 sensors</span><span>N ↑</span></div>
+        <div id="legTitle">Mean speed (source units, likely mph)</div>
+        <div class="ramp" id="legRamp"></div>
+        <div class="ramp-row"><span id="legLo">20</span><span id="legHi">70</span></div>
+        <div style="margin-top:3px" id="legNote">Pillar height = drop below 70</div>
+      </div>
     </div>
   </div>
 </div>
+
 <div class="wrap">
   <div class="modenote"><span class="label" id="mnLabel">Speed by hour</span><p id="mnText"></p></div>
 </div>
@@ -62,49 +130,101 @@
 
 <!-- 01 ---------------------------------------------------------------- -->
 <section class="stop" id="s1">
-  <div class="stop-head"><div class="num">01</div><div><div class="who">Person A · data understanding &amp; quality</div><h2>The raw signal</h2></div></div>
+  <div class="stop-head"><div class="num">01</div><div><div class="who">Person A · data understanding &amp; quality (METR-LA)</div><h2>The raw signal</h2></div></div>
   <div class="cols">
     <div class="prose">
-      <p>METR-LA holds 34,272 readings for each of 207 sensors, from 1 March to 27 June 2012. Before any model, we checked that the file can be trusted: a SHA-256 fingerprint, no duplicate timestamps, no gaps in the 5-minute grid, no negative values.</p>
-      <p>The catch is that <b>8.1% of readings are exactly 0</b>. A freeway at a true 0 mph for hours is rare, so we follow the DCRNN benchmark: a zero means "sensor did not report". Zeros are flagged, never filled in as a target, and never scored.</p>
-      <p class="quiet">The curve is the whole network's mean speed by hour. The low point is 17:00 at 49.9, and the high is 22:00 at 63.0.</p>
+      <p><b>METR-LA</b> holds 34,272 readings (every 5 minutes, 1 March – 27 June 2012) across 207 loop detectors in <b>Los Angeles County, California</b>. Before training any model, we locked the raw file's SHA-256 fingerprint and verified zero duplicate timestamps and zero gaps in the 5-minute clock grid.</p>
+      <p>The catch: <b>8.1% of cells are exact 0</b> (575,302 readings, including 97 blocks where every sensor reads 0 at once). Following the DCRNN benchmark, zeros are treated as <b>sensor did not report</b> — never as stopped traffic, never filled as targets, and never scored.</p>
+      <p class="quiet">The curve shows the whole 207-sensor Los Angeles average by hour (stored clock): lowest at 17:00 evening rush (49.9) and highest at 22:00 (63.0).</p>
     </div>
     <div class="stack">
       <div class="facts">
-        <div><b>207</b><span>loop detectors</span></div>
-        <div><b>5 min</b><span>between readings</span></div>
-        <div><b>34,272</b><span>time steps per sensor</span></div>
-        <div><b>575,302</b><span>zero readings treated as missing</span></div>
+        <div><b>207</b><span>LA loop detectors</span></div>
+        <div><b>5 min</b><span>34,272 steps (17 weeks)</span></div>
+        <div><b>8.1%</b><span>575,302 zeros = missing</span></div>
+        <div><b>1,722</b><span>directed road-graph links</span></div>
       </div>
-      <div class="panel"><span class="label">Network mean speed by hour of day</span><svg id="hourChart" viewBox="0 0 560 200" role="img" aria-label="Mean speed by hour"></svg></div>
+      <div class="panel">
+        <span class="label">LA network mean speed by hour of day <span class="tag real">real</span></span>
+        <svg id="hourChart" viewBox="0 0 560 200" role="img" aria-label="Mean speed by hour across Los Angeles sensors"></svg>
+      </div>
     </div>
+  </div>
+
+  <div class="dives">
+    <details class="dive" id="dv-outages">
+      <summary>
+        <div class="what">
+          <h3>Inside the 8.1% zero dropouts</h3>
+          <p>See real missingness rates across all 207 Los Angeles sensors and the anti-leakage imputation contract.</p>
+        </div>
+        <span class="chev" aria-hidden="true"></span>
+      </summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Zero-reading rate across all 207 LA sensors <span class="tag real">real</span></span>
+            <svg id="zeroHist" viewBox="0 0 560 200" role="img" aria-label="Histogram of missing-data fraction across 207 sensors"></svg>
+            <p class="cap" id="zeroCap"></p>
+          </div>
+          <div class="stack">
+            <ol class="steps">
+              <li><b>Mask exact zeros</b><span>Exact <code>0</code>, <code>NaN</code>, <code>inf</code>, and negatives become missing.</span></li>
+              <li><b>Causal input fill</b><span>Forward-fill from past readings only (zero future peek); leading gaps use each sensor's training-only median.</span></li>
+              <li><b>Warn the model</b><span>Add explicit binary <code>speed_missing_flag</code> so models know a value was forward-filled.</span></li>
+              <li><b>Targets stay raw</b><span>Future ground truth is never imputed — invalid target rows carry <code>target_valid = False</code> and are skipped.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </details>
   </div>
 </section>
 
 <!-- 02 ---------------------------------------------------------------- -->
 <section class="stop" id="s2">
-  <div class="stop-head"><div class="num">02</div><div><div class="who">Person B · features &amp; leak-free split</div><h2>One hour in, four answers out</h2></div></div>
+  <div class="stop-head"><div class="num">02</div><div><div class="who">Person B · features &amp; leak-free split (Ashutosh)</div><h2>One hour in, four answers out</h2></div></div>
   <div class="cols">
     <div class="prose">
-      <p>Every training example is a sliding window. The model sees the last 12 readings (one hour) and must predict the reading 1, 3, 6 and 12 steps later. From those 12 numbers we build 32 features: lags, rolling statistics, trend, time of day and missingness.</p>
-      <p>The split follows time: the oldest 70% trains, the next 10% tunes, and the last 20% is the exam, opened once. An example is kept only when all four of its targets fall inside the same split, so no answer leaks across the boundary.</p>
-      <p class="quiet">Drag the slider. The window is real data from sensor 717468 on Monday 11 June 2012, a test-set day. The feature values are worked out live from the cells shown. The GRU deep dive in section 05 reads this same window.</p>
+      <p>Every sample reads the <b>last 12 steps (1 hour)</b> to forecast <b>+5, +15, +30, and +60 minutes</b> ahead. From those 12 steps, Phase 1 built <b>32 strictly local features</b> per sensor — zero neighbour info allowed.</p>
+      <p>The chronological split uses the oldest 70% to train, next 10% to tune, and final 20% for a one-time test. An origin is kept only if all four future targets stay inside the same split — zero leakage across boundaries.</p>
+      <p class="quiet">Scrub the Monday 11 June 2012 slider on sensor 717468 (real test data), or click any feature-group bar below to unfold its columns and formula.</p>
     </div>
     <div class="panel">
-      <span class="label">Sliding window · sensor 717468 · <span id="winTime">—</span></span>
-      <svg id="winChart" viewBox="0 0 560 170" role="img" aria-label="Speed series with the input window highlighted"></svg>
+      <span class="label">Sliding window · LA sensor 717468 · <span id="winTime">—</span> <span class="tag real">real</span></span>
+      <svg id="winChart" viewBox="0 0 560 176" role="img" aria-label="Speed series with input window and target horizons"></svg>
       <div class="strip" id="strip"></div>
-      <input class="range" type="range" id="winPos" min="11" max="90" value="34" aria-label="Move the window">
+      <input class="range" type="range" id="winPos" min="11" max="90" value="34" aria-label="Slide the 1-hour window">
       <div class="featgrid" id="feats"></div>
-      <span class="label" style="margin-top:16px;display:block">The 32 features, by group</span>
-      <div class="groupbar">
-        <div style="flex:12;background:#e9b44c">Lags 12</div>
-        <div style="flex:8;background:#7cc3c9">Rolling 8</div>
-        <div style="flex:3;background:#b9cf7a">Trend 3</div>
-        <div style="flex:7;background:#c9a9d9">Time 7</div>
-        <div style="flex:2;background:#e5a08f">Miss 2</div>
+      <span class="label" style="margin-top:14px;display:block">32 features by group — click any group to inspect</span>
+      <div class="groupbar" id="groupBar">
+        <button class="gb-btn" data-grp="lags" aria-expanded="false" style="flex:12;background:#e9b44c">Lags 12</button>
+        <button class="gb-btn" data-grp="rolling" aria-expanded="false" style="flex:8;background:#7cc3c9">Rolling 8</button>
+        <button class="gb-btn" data-grp="trend" aria-expanded="false" style="flex:3;min-width:58px;background:#b9cf7a">Trend 3</button>
+        <button class="gb-btn" data-grp="time" aria-expanded="false" style="flex:7;background:#c9a9d9">Time 7</button>
+        <button class="gb-btn" data-grp="miss" aria-expanded="false" style="flex:2;min-width:60px;background:#e5a08f">Miss 2</button>
       </div>
+      <div class="feat-detail" id="featDetail" hidden></div>
     </div>
+  </div>
+
+  <div class="dives">
+    <details class="dive" id="dv-split">
+      <summary>
+        <div class="what">
+          <h3>Inside the 70 / 10 / 20 time split &amp; 12-step leak guard</h3>
+          <p>Why we drop 12 timestamps at split boundaries and never shuffle rows.</p>
+        </div>
+        <span class="chev" aria-hidden="true"></span>
+      </summary>
+      <div class="dive-body">
+        <div class="viz">
+          <span class="label">Chronological timeline · Mar 1 – Jun 27, 2012 (34,272 five-minute steps) <span class="tag real">real</span></span>
+          <svg id="splitViz" viewBox="0 0 640 148" role="img" aria-label="70/10/20 split timeline with 12-step guard"></svg>
+          <p class="cap">Adjacent 5-minute traffic speeds are nearly identical — random row splitting puts 09:00 in test and 09:05 in train, causing severe data leakage. Requiring all 4 horizons (<code>t+1..t+12</code>) inside one split drops the last 12 steps before each cut, guaranteeing zero target overlap.</p>
+        </div>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -113,78 +233,77 @@
   <div class="stop-head"><div class="num">03</div><div><div class="who">Persons C, D, E · baselines, trees, fair scoring</div><h2>Phase 1: every sensor on its own</h2></div></div>
   <div class="cols">
     <div class="prose">
-      <p><b>Persistence</b> says the future equals now. <b>Historical average</b> says the future equals the usual speed for this sensor, weekday and time. Both are honest bars to beat.</p>
-      <p><b>Random Forest</b> averages many independent trees. <b>XGBoost</b> grows trees one after another, each fixing the last one's mistakes. Adding four historical-average features ("how far is now from normal?") gave <b>XGBoost + HA</b>, the Phase 1 winner at every horizon.</p>
-      <p>All five models were re-scored on the same 1.24 million test targets. At 60 minutes, XGBoost + HA cuts error by 31% against persistence (5.38 → 3.69).</p>
-      <p class="quiet">Look at how the lines fan out. The further ahead you forecast, the more a single sensor's own past runs out of road.</p>
+      <p><b>Persistence</b> predicts speed stays flat. <b>Historical average</b> uses that sensor's usual speed for that weekday and clock time (training split only).</p>
+      <p><b>Random Forest</b> averages 100 independent trees; <b>XGBoost</b> adds boosted trees one-by-one on residuals. Adding 4 historical-average features created <b>XGBoost + HA 36</b>, the Phase 1 winner across all horizons.</p>
+      <p>Re-scored on <b>1.245M valid test targets</b>, XGBoost + HA cuts 60-min error by 31% over Persistence (5.380 → 3.688) — yet errors grow sharply at 30–60 min because single sensors cannot see upstream or downstream traffic.</p>
     </div>
     <div class="panel">
-      <span class="label">Test MAE by horizon (lower is better)</span>
+      <span class="label">Test MAE by horizon (lower is better) <span class="tag real">real</span></span>
       <div class="toggles" id="p1toggles"></div>
       <svg id="p1Chart" viewBox="0 0 560 280" role="img" aria-label="MAE by horizon for Phase 1 models"></svg>
     </div>
   </div>
 
   <div class="dives">
-    <span class="label">Open a model</span>
+    <span class="label">Click any panel to unfold the algorithm</span>
 
     <details class="dive" id="dv-xgb">
-      <summary><div class="what"><h3>Inside XGBoost</h3><p>Trees added one at a time, each one fitted to what the others still get wrong.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <summary><div class="what"><h3>Inside XGBoost</h3><p>Gradient-boosted trees fitted one after another to the remaining errors, plus real 60-min feature gain.</p></div><span class="chev" aria-hidden="true"></span></summary>
       <div class="dive-body">
         <div class="dive-grid wide">
           <div class="viz">
             <span class="label">Boosting, live <span class="tag toy">toy</span></span>
             <svg id="boostChart" viewBox="0 0 560 300" role="img" aria-label="Boosting animation"></svg>
             <div class="btnrow"><button class="btn primary" id="boostPlay">Play</button><button class="btn" id="boostStep">+1 tree</button><button class="btn" id="boostReset">Reset</button><span class="readout" id="boostRead"></span></div>
-            <p class="cap">Fitted live in your browser on the 11 June curve, speed against time, using one-split trees and learning rate 0.3. The bottom strip is the newest tree's correction. The real model uses depth-8 trees on 32 features over 4.6 million rows, but the loop is the same.</p>
+            <p class="cap">Fitted live in your browser on sensor 717468's 11 June curve using depth-1 stumps (<code>η = 0.3</code>). Real Phase 1 uses depth-8 trees across 4.61M training rows.</p>
           </div>
           <div class="stack">
             <ol class="steps" id="boostSteps">
-              <li>Start from one guess for everybody</li>
-              <li>Measure what is still wrong: the <b>residuals</b></li>
-              <li>Fit a small tree to the residuals</li>
-              <li>Add a shrunken copy of it: <code>F ← F + η·tree</code></li>
-              <li>Repeat until validation MAE stops improving</li>
+              <li>Start from one constant prediction across all points</li>
+              <li>Measure what is still wrong: the <b>residuals</b> (red bars)</li>
+              <li>Fit the next tree directly to those residuals</li>
+              <li>Add a shrunken step: <code>F ← F + η·tree</code> (cyan strip)</li>
+              <li>Stop early when validation MAE stops improving</li>
             </ol>
+            <div class="readout" id="boostStepInfo">Click any step above to focus that phase.</div>
             <dl class="spec" id="xgbSpec"></dl>
           </div>
         </div>
         <div class="dive-grid">
           <div class="viz">
-            <span class="label">What the 60-minute model leans on <span class="tag real">real</span></span>
+            <span class="label">60-minute feature importance by gain <span class="tag real">real</span></span>
             <div class="toggles" id="impToggles"><button class="tg solo" data-k="xgb32" aria-pressed="false">XGBoost 32</button><button class="tg solo" data-k="xgb_ha" aria-pressed="true">XGBoost + HA 36</button></div>
             <svg id="impChart" viewBox="0 0 520 300" role="img" aria-label="Feature importance by gain"></svg>
             <p class="cap" id="impCap"></p>
           </div>
           <div class="stack">
-            <details class="sub"><summary>The four historical-average features</summary><div class="sub-body">
-              <p class="cap">Built from training data only (up to 23 May 2012, 07:05). <code>ha_target</code> is the usual speed for this sensor at the target's weekday and time. <code>ha_delta</code> is how much that usual speed changes between now and the target time. <code>anomaly_now</code> is how far the current speed sits from normal for right now. The fourth is the usual speed now. With these features, a 60-minute forecast can lean on "traffic tends to return to normal", which is exactly what the 32-feature model lacks.</p>
+            <details class="sub"><summary>The four historical-average features (why HA matters)</summary><div class="sub-body">
+              <p class="cap">Built from training data only (up to 23 May 2012): <code>anomaly_now</code> (how far current speed is from normal), <code>ha_delta</code> (how normal speed changes by <code>t+h</code>), <code>ha_target</code> (normal speed at target time), and <code>ha_now</code>. Notice deep models in Phase 2 do <b>not</b> receive these 4 lookup columns.</p>
             </div></details>
             <details class="sub"><summary>Trees used per horizon (early stopping)</summary><div class="sub-body"><table id="iterTable"></table></div></details>
-            <details class="sub"><summary>Where it lives in the code</summary><div class="sub-body"><pre>src/models/xgboost_model.py     training + HA features
-src/models/baselines.py         persistence, historical average
-models/person_c/xgb_ha_60min.json   saved booster
-scripts/run_person_c.py --predict-only</pre></div></details>
+            <details class="sub"><summary>Code &amp; model checkpoints</summary><div class="sub-body"><pre>src/models/xgboost_model.py        training + target-time HA
+src/models/baselines.py            persistence, historical average
+models/person_c/xgb_ha_60min.json  saved booster</pre></div></details>
           </div>
         </div>
       </div>
     </details>
 
     <details class="dive" id="dv-rf">
-      <summary><div class="what"><h3>Inside Random Forest</h3><p>Many trees trained on different random samples, then averaged. Plus: which feature groups matter.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <summary><div class="what"><h3>Inside Random Forest</h3><p>Bagged independent trees + the feature-group ablation (what 32 features actually help).</p></div><span class="chev" aria-hidden="true"></span></summary>
       <div class="dive-body">
         <div class="dive-grid wide">
           <div class="viz">
             <span class="label">Bagging, live <span class="tag toy">toy</span></span>
             <svg id="forestChart" viewBox="0 0 560 280" role="img" aria-label="Random forest animation"></svg>
             <div class="btnrow"><button class="btn primary" id="forestPlay">Grow forest</button><button class="btn" id="forestReset">Resample</button><span class="readout" id="forestRead"></span></div>
-            <p class="cap">Each thin line is a depth-3 tree trained on a random resample of the same curve. Alone, each one is jumpy. Their average (bold) is smoother. Boosting builds trees in sequence; a forest builds them independently and lets the errors cancel out.</p>
+            <p class="cap">Thin teal lines are single depth-3 trees trained on bootstrap samples; bold amber is their average. Variance drops sharply as independent trees average together.</p>
           </div>
           <div class="stack">
             <dl class="spec" id="rfSpec"></dl>
             <details class="sub" open><summary>Ablation: add feature groups one at a time <span class="tag real">real</span></summary><div class="sub-body">
               <svg id="ablRF" viewBox="0 0 420 220" role="img" aria-label="Random forest ablation"></svg>
-              <p class="cap">Test MAE. Going from lags alone (A) to lags + time (B) is the biggest step at 60 minutes: 5.38 → 4.90. Rolling statistics (C) help a little more, and trend + missingness (D) add nothing measurable.</p>
+              <p class="cap">60-min test MAE: Lags alone (5.38) tie Persistence; adding <b>Time (B)</b> gives the big jump (5.38 → 4.90); Rolling (C) improves to 4.84; Trend/Missing (D) add nothing extra for RF.</p>
             </div></details>
           </div>
         </div>
@@ -192,11 +311,11 @@ scripts/run_person_c.py --predict-only</pre></div></details>
     </details>
 
     <details class="dive" id="dv-boot">
-      <summary><div class="what"><h3>Is the win real? The block bootstrap</h3><p>Resample the 24 test days 2,000 times and see whether the gap ever closes.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <summary><div class="what"><h3>Is the win real? 2-day block bootstrap</h3><p>Resample the 24 held-out Los Angeles test days 2,000 times to build 95% confidence intervals.</p></div><span class="chev" aria-hidden="true"></span></summary>
       <div class="dive-body">
         <div class="dive-grid wide">
           <div class="viz">
-            <span class="label">Paired day-block bootstrap, run in your browser <span class="tag real">real data</span></span>
+            <span class="label">Paired 2-day block bootstrap <span class="tag real">real data</span></span>
             <div class="toggles" id="bootPairs"></div>
             <div class="days" id="bootDays"></div>
             <svg id="bootHist" viewBox="0 0 560 190" role="img" aria-label="Bootstrap distribution"></svg>
@@ -204,13 +323,13 @@ scripts/run_person_c.py --predict-only</pre></div></details>
           </div>
           <div class="stack">
             <ol class="steps" id="bootSteps">
-              <li>For each test day, sum each model's absolute errors at 60 min</li>
-              <li>Draw 12 random 2-day blocks (with replacement, wrapping around): 24 days</li>
-              <li>Recompute the MAE gap on that resampled set of days</li>
-              <li>Repeat 2,000 times. The middle 95% of gaps is the interval</li>
-              <li>If the whole interval sits above 0, the win is not luck</li>
+              <li>Sum each model's absolute error per test day at +60 min (24 test days)</li>
+              <li>Draw 12 circular 2-day blocks (with replacement) → 24 resampled days</li>
+              <li>Compute the MAE gap on that resampled test period</li>
+              <li>Repeat 2,000 times; take the middle 95% interval</li>
+              <li>If the entire interval sits strictly above 0, improvement is not luck</li>
             </ol>
-            <p class="cap">Days, not individual readings, are resampled, because readings within one day are strongly correlated. Blocks of 2 days keep some of that day-to-day correlation. The random draws here differ from the project's (numpy, seed 42), so the edges of the interval can move by a few hundredths. The official interval is shown for comparison.</p>
+            <p class="cap">2-day blocks preserve weekday autocorrelation. Browser draws differ slightly from the repo's NumPy seed 42 by ~0.01; official repo intervals are shown side-by-side.</p>
           </div>
         </div>
       </div>
@@ -220,20 +339,25 @@ scripts/run_person_c.py --predict-only</pre></div></details>
 
 <!-- 04 ---------------------------------------------------------------- -->
 <section class="stop" id="s4">
-  <div class="stop-head"><div class="num">04</div><div><div class="who">The gap Phase 1 left open</div><h2>A jam travels against the traffic</h2></div></div>
+  <div class="stop-head"><div class="num">04</div><div><div class="who">The graph gap Phase 1 left open</div><h2>A jam travels against the traffic</h2></div></div>
   <div class="cols">
     <div class="prose">
-      <p>When a freeway clogs, the slow zone grows backwards, toward the cars still arriving. A sensor that only reads its own history cannot see the slowdown until it is already there.</p>
-      <p>Its downstream neighbour saw it minutes earlier. A graph model passes messages along the road links, so each sensor's forecast can use what the sensors around it are reading right now.</p>
-      <p class="quiet">This animation illustrates the idea; it is not model output. Traffic flows left to right while the jam creeps right to left. Watch sensor C.</p>
-      <p><button class="chip" id="toPass">Show message passing on the real map ↑</button></p>
+      <p>When a Los Angeles freeway slows downstream, congestion queues travel <b>upstream</b> toward incoming cars. A local sensor reading only its own last hour cannot see that jam arriving until speeds already drop.</p>
+      <p>Neighbouring sensors downstream saw it earlier. Phase 2 models pass messages across the <b>METR-LA road-distance graph</b> (`adj_mx.pkl`, 207 nodes, 1,722 directed edges) so every sensor sees surrounding conditions.</p>
+      <p class="quiet">Click any sensor circle (A–E) below to compare what a local model vs. a graph model sees right then, or jump up to watch message passing on the real 207-sensor Los Angeles map.</p>
+      <p><button class="chip" id="toPass">Show message passing on the real LA 3D map ↑</button></p>
     </div>
     <div class="panel">
-      <span class="label">Illustration · five sensors on one corridor</span>
-      <svg id="road" viewBox="0 0 560 170" role="img" aria-label="Animation of a jam moving upstream past five sensors"></svg>
+      <span class="label">Conceptual LA Freeway Corridor · source speed units (likely mph) <span class="tag toy">illustration</span></span>
+      <svg id="road" viewBox="0 0 560 172" role="img" aria-label="Conceptual corridor illustration showing jam growing upstream"></svg>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn primary" id="roadPlay">Pause</button>
+        <button class="btn" id="roadStep">+ Step</button>
+        <span class="readout" id="roadFocus">Inspecting sensor <b>C</b> (click any sensor A–E)</span>
+      </div>
       <div class="road-cap">
-        <div class="verdict"><b>Local model at C (own history)</b><div class="say" id="vLocal">—</div></div>
-        <div class="verdict"><b>Graph model at C (+ neighbours)</b><div class="say" id="vGraph">—</div></div>
+        <div class="verdict"><b>Local model (own history)</b><div class="say" id="vLocal">—</div></div>
+        <div class="verdict"><b>Graph model (+ neighbours)</b><div class="say" id="vGraph">—</div></div>
       </div>
     </div>
   </div>
@@ -244,47 +368,70 @@ scripts/run_person_c.py --predict-only</pre></div></details>
   <div class="stop-head"><div class="num">05</div><div><div class="who">Members 1–4 · pipeline, GAT, DCRNN, controls, evaluation</div><h2>Phase 2: let the road graph talk</h2></div></div>
   <div class="cols">
     <div class="prose">
-      <p>The graph has 207 nodes and road-distance links, weighted by a Gaussian kernel of driving distance. Inputs become a tensor of 12 steps × 207 sensors × 7 channels: scaled speed, a missing flag, hour and weekday as sine/cosine, and a weekend flag.</p>
-      <p><b>GAT</b> (Graph Attention Network) learns, for every sensor, how much to listen to each neighbour. <b>DCRNN</b> (Diffusion Convolutional RNN) spreads information along the road links in both directions inside a recurrent encoder–decoder.</p>
-      <p>To prove the road graph itself helps, we trained <b>controls</b>: the same models with only self-links (identity), with a shuffled graph (right degrees, wrong neighbours), and a GRU with no graph at all.</p>
-      <p class="quiet">Result: the real graph wins clearly. A shuffled graph also helped GAT a little, so not all of GAT's gain comes from true road links. Hypothesis H2 was contradicted, and we report that.</p>
+      <p>Same METR-LA file, same 70/10/20 split, same valid targets (persistence parity error = <code>0.000</code>). Inputs form a <code>[B, 12, 207, 7]</code> tensor: z-scored speed, missing flag, hour sin/cos, weekday sin/cos, and weekend flag.</p>
+      <p><b>GAT</b> (Member 2) uses masked multi-head attention so each sensor weights its neighbours dynamically. <b>DCRNN</b> (Member 3) runs <i>K</i>-hop forward and reverse random-walk diffusion inside a recurrent encoder–decoder.</p>
+      <p>To isolate the road graph cleanly, we tested 3 structural controls: <b>GRU local</b> (no graph), <b>Identity</b> (self-loops only), and <b>Shuffled</b> (same link counts per node, wrong road destinations).</p>
     </div>
     <div class="stack">
       <div class="panel">
-        <span class="label">60-minute test MAE · does the graph matter?</span>
+        <span class="label">60-minute test MAE · real graph vs. controls <span class="tag real">real</span></span>
         <svg id="ablChart" viewBox="0 0 560 300" role="img" aria-label="60-minute MAE for graph models and controls"></svg>
       </div>
       <div class="panel">
-        <span class="label">Paired day-block bootstrap at 60 min · MAE reduction, 95% interval</span>
+        <span class="label">Paired 2-day bootstrap at 60 min (95% CI, positive = 1st model lower MAE) <span class="tag real">real</span></span>
         <div class="ci" id="ciList"></div>
       </div>
     </div>
   </div>
-  <div class="panel scroll" style="margin-top:24px">
-    <span class="label">Test MAE, all horizons (Phase 2: mean over seeds 42/43/44)</span>
+
+  <div class="panel scroll" style="margin-top:20px">
+    <span class="label">Test MAE across all horizons (source speed units; Phase 2 = mean across seeds 42/43/44) <span class="tag real">real</span></span>
     <table id="fullTable"></table>
   </div>
 
   <div class="dives">
-    <span class="label">Open a model · the selected sensor follows your click on the 3D map</span>
+    <span class="label">Click any model or verdict card to unfold · GAT, DCRNN &amp; controls follow your selected LA sensor</span>
 
-    <details class="dive" id="dv-gru">
-      <summary><div class="what"><h3>Inside GRU local (the no-graph control)</h3><p>A recurrent cell reads the hour step by step and keeps a running memory.</p></div><span class="chev" aria-hidden="true"></span></summary>
+    <details class="dive" id="dv-hyp">
+      <summary>
+        <div class="what">
+          <h3>Pre-registered hypotheses (H0–H5) &amp; congestion onset recall</h3>
+          <p>Programmatic verdicts locked before test evaluation + how well each model catches sudden jams forming.</p>
+        </div>
+        <span class="chev" aria-hidden="true"></span>
+      </summary>
       <div class="dive-body">
         <div class="dive-grid wide">
           <div class="viz">
-            <span class="label">Unrolled over the 12 input steps <span class="tag toy">untrained cell</span> <span class="tag real">real input + forecast</span></span>
+            <span class="label">60-min proxy congestion onset recall (50,064 true onsets in test split) <span class="tag real">real</span></span>
+            <svg id="onsetChart" viewBox="0 0 560 280" role="img" aria-label="60-minute congestion onset recall across models"></svg>
+            <p class="cap">An "onset" occurs when a sensor is uncongested at origin <code>t</code> and drops below 60% of its training 85th-percentile speed at <code>t+60 min</code>. Persistence scores 0% because repeating current speed never predicts a new jam; graph diffusion lifts DCRNN to <b>41.0%</b>.</p>
+          </div>
+          <div class="stack">
+            <span class="label">Click any hypothesis to unfold its numbers</span>
+            <div class="hyp-grid" id="hypList"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details class="dive" id="dv-gru">
+      <summary><div class="what"><h3>Inside GRU local (non-graph deep control)</h3><p>Shared per-sensor GRU with zero neighbour mixing — scores 4.379, virtually identical to XGBoost 32 (4.393).</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <div class="dive-grid wide">
+          <div class="viz">
+            <span class="label">Unrolled over 12 past steps <span class="tag toy">8-unit demo cell</span> <span class="tag real">real window &amp; prediction</span></span>
             <svg id="gruViz" viewBox="0 0 560 300" role="img" aria-label="GRU unrolled over 12 steps"></svg>
             <div class="btnrow"><button class="btn primary" id="gruPlay">Play</button><span class="readout" id="gruRead"></span></div>
-            <p class="cap">Input is the section 02 window, scaled exactly as in training (mean 58.584, std 12.823). The cell has 8 units with fixed random weights so you can watch the mechanics. The real cell has 64 trained units. The forecast at the bottom is the trained model's real test prediction for this moment.</p>
+            <p class="cap">Reads the section 02 window z-scored by training mean 58.584 / std 12.823. Bottom readout shows the trained 64-unit <code>gru_local</code> model's real test forecast at this origin.</p>
           </div>
           <div class="stack">
             <ol class="steps" id="gruSteps">
               <li><b>Update gate</b> <code>z</code>: how much old memory to keep</li>
-              <li><b>Reset gate</b> <code>r</code>: how much old memory to use for the new candidate</li>
+              <li><b>Reset gate</b> <code>r</code>: how much old memory feeds candidate state</li>
               <li><b>Candidate</b> <code>ñ = tanh(W·x + r ⊙ U·h)</code></li>
               <li><b>Mix</b> <code>h ← (1−z) ⊙ ñ + z ⊙ h</code></li>
-              <li>After step 12, a small head predicts the <b>change</b> from the last speed, for all 4 horizons</li>
+              <li>MLP head predicts residual Δ speed across all 4 horizons</li>
             </ol>
             <dl class="spec" id="gruSpec"></dl>
             <details class="sub"><summary>Hyperparameter search (validation MAE)</summary><div class="sub-body scroll"><table id="srch-gru_local"></table></div></details>
@@ -294,100 +441,111 @@ scripts/run_person_c.py --predict-only</pre></div></details>
     </details>
 
     <details class="dive" id="dv-gat">
-      <summary><div class="what"><h3>Inside GAT</h3><p>Every sensor scores its neighbours, turns the scores into weights, and mixes their messages.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <summary><div class="what"><h3>Inside GAT (Graph Attention Network · Member 2)</h3><p>Dense pure-PyTorch multi-head attention: scores real road neighbours, masks non-edges to −∞, and mixes messages.</p></div><span class="chev" aria-hidden="true"></span></summary>
       <div class="dive-body">
         <div class="dive-grid wide">
           <div class="viz">
-            <span class="label">One attention layer at sensor <b id="gatSensor" class="mono">—</b> <span class="tag real">real neighbours</span></span>
-            <svg id="gatViz" viewBox="0 0 560 330" role="img" aria-label="Graph attention around the selected sensor"></svg>
-            <div class="btnrow"><button class="btn primary" id="gatPlay">Play layer</button><button class="btn" id="gatPrev">‹ Step</button><button class="btn" id="gatNext">Step ›</button><span class="readout" id="gatRead"></span></div>
-            <p class="cap">Neighbours are this sensor's real road links. The self-weight comes from the trained model's measured attention for this sensor; the rest of the weight is spread evenly over the neighbours for display.</p>
+            <span class="label">Attention layer around LA sensor <b id="gatSensor" class="mono">—</b> <span class="tag real">real links</span> <span class="tag toy" id="gatModeTag" hidden>toy jam simulation</span></span>
+            <svg id="gatViz" viewBox="0 0 620 340" role="img" aria-label="Graph attention around the selected Los Angeles sensor"></svg>
+            <div class="btnrow">
+              <button class="btn primary" id="gatPlay">Play layer</button>
+              <button class="btn" id="gatPrev">‹ Step</button>
+              <button class="btn" id="gatNext">Step ›</button>
+              <button class="btn" id="gatResetJam" hidden>Reset real weights</button>
+              <span class="readout" id="gatRead"></span>
+            </div>
+            <p class="cap">Shows real METR-LA road neighbours from <code>adj_mx.pkl</code> and measured self-attention from seed 42. <b>Click any neighbour node</b> to simulate a sudden jam there and watch softmax attention shift dynamically (toy illustration).</p>
           </div>
           <div class="stack">
             <ol class="steps" id="gatSteps">
-              <li>GRU encoder turns each sensor's last hour into a vector <code>h</code></li>
-              <li>Project it: <code>Wh</code>, split into 2 heads of 32</li>
-              <li>Score each pair: <code>e = LeakyReLU(a·Whᵢ + b·Whⱼ)</code></li>
-              <li>Mask non-neighbours to −∞, keep the self-link</li>
-              <li>Softmax over the neighbours gives weights <code>α</code> that sum to 1</li>
-              <li>Weighted sum of messages, plus residual and LayerNorm</li>
-              <li>Head predicts the change from the last speed for 4 horizons</li>
+              <li>Shared GRU encodes each sensor's 12 steps <span class="step-shape">[B, 12, 207, 7] → [B, 207, 64]</span></li>
+              <li>Project &amp; split into 2 heads of dim 32 <span class="step-shape">[B, 2, 207, 32]</span></li>
+              <li>Factored edge score <code>LeakyReLU(a_src·Whᵢ + a_dst·Whⱼ)</code> <span class="step-shape">[B, 2, 207, 207]</span></li>
+              <li>Mask non-edges (×) to <code>-1e9</code>, keep self-loops <span class="step-shape">strictly 0 outside road graph</span></li>
+              <li>Softmax + re-normalize rows to sum = 1.0 <span class="step-shape">α sums to 1.0 per sensor</span></li>
+              <li>Weighted sum of neighbour vectors + LayerNorm <span class="step-shape">LayerNorm(h + Σ α·Whⱼ)</span></li>
+              <li>Residual MLP head predicts +5/+15/+30/+60m Δ <span class="step-shape">+ last_speed → [B, 4, 207]</span></li>
             </ol>
           </div>
         </div>
         <div class="dive-grid">
           <div class="viz">
-            <span class="label">Where this sensor's attention went (test period) <span class="tag real">real</span></span>
-            <svg id="gatMass" viewBox="0 0 520 150" role="img" aria-label="Attention mass for the selected sensor"></svg>
-            <svg id="gatHist" viewBox="0 0 520 150" role="img" aria-label="Self-attention across all sensors"></svg>
-            <p class="cap">Downstream and upstream overlap because most links run both ways, so they do not add up to the neighbour total. The histogram shows the self-weight for all 207 sensors, with the selected one marked.</p>
+            <span class="label">Measured attention budget (12 test origins, seed 42) <span class="tag real">real</span></span>
+            <svg id="gatMass" viewBox="0 0 520 144" role="img" aria-label="Attention mass breakdown"></svg>
+            <svg id="gatHist" viewBox="0 0 520 156" role="img" aria-label="Self-attention histogram across all 207 LA sensors"></svg>
+            <p class="cap">Across all 207 sensors, GAT allocates ~9.7% weight to self and ~90.3% to neighbours (upstream/downstream overlap because most links run both ways). Note: attention weights are <b>not</b> causal proof of physical shockwaves.</p>
           </div>
           <div class="stack">
             <dl class="spec" id="gatSpec"></dl>
             <details class="sub"><summary>Hyperparameter search (validation MAE)</summary><div class="sub-body scroll"><table id="srch-gat"></table></div></details>
-            <details class="sub"><summary>Where it lives in the code</summary><div class="sub-body"><pre>src/phase2/models/gat.py        GATLayer, masked softmax
-configs/phase2/final/gat.yaml   picked config
-scripts/phase2_gat_attention_stats.py</pre></div></details>
+            <details class="sub"><summary>Where GAT lives in the code</summary><div class="sub-body"><pre>src/phase2/models/gat.py            GATLayer, TemporalEncoder, GATModel
+configs/phase2/final/gat.yaml       Candidate 1 (h=64, 2 heads, 1 layer, GRU)
+scripts/phase2_gat_attention_stats.py  entropy + self/up/downstream stats
+tests/test_phase2_gat.py            9 unit tests (masking, equivariance, params)</pre></div></details>
           </div>
         </div>
       </div>
     </details>
 
     <details class="dive" id="dv-dcrnn">
-      <summary><div class="what"><h3>Inside DCRNN</h3><p>Information diffuses along the roads, hop by hop, inside a recurrent encoder–decoder.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <summary><div class="what"><h3>Inside DCRNN (best model at 5–30 min · Member 3)</h3><p>K-hop forward &amp; reverse random-walk diffusion inside a 12→12 recurrent encoder–decoder over Los Angeles.</p></div><span class="chev" aria-hidden="true"></span></summary>
       <div class="dive-body">
         <div class="dive-grid wide">
           <div class="viz">
-            <span class="label">Diffusion from sensor <b id="dcSensor" class="mono">—</b>, computed on the real graph <span class="tag real">real</span></span>
-            <svg id="dcMap" viewBox="0 0 560 330" role="img" aria-label="Diffusion weights on a map"></svg>
+            <span class="label">Diffusion footprint from LA sensor <b id="dcSensor" class="mono">—</b> <span class="tag real">real graph adj_mx.pkl</span></span>
+            <svg id="dcMap" viewBox="0 0 560 330" role="img" aria-label="DCRNN diffusion weights across Los Angeles sensors"></svg>
             <div class="btnrow">
               <span class="readout">Hops K</span>
               <button class="tg solo" data-k="1" aria-pressed="false">1</button><button class="tg solo" data-k="2" aria-pressed="true">2 (used)</button><button class="tg solo" data-k="3" aria-pressed="false">3</button>
               <span class="readout" style="margin-left:8px">Direction</span>
               <select class="btn" id="dcDir" aria-label="Diffusion direction"><option value="both">both</option><option value="fwd">forward</option><option value="rev">reverse</option></select>
-              <button class="btn" id="dcTo3d">Show on 3D map ↑</button>
+              <button class="btn" id="dcTo3d">Show on LA 3D map ↑</button>
             </div>
             <div class="readout" id="dcRead"></div>
           </div>
           <div class="stack">
             <ol class="steps">
-              <li>Forward transition <code>P<sub>f</sub> = D<sub>out</sub>⁻¹ A</code>: read the sensors you drive towards</li>
-              <li>Reverse transition <code>P<sub>r</sub> = D<sub>in</sub>⁻¹ Aᵀ</code>: read the sensors that drive into you</li>
-              <li>Powers <code>P¹ … Pᴷ</code> reach K hops; each gets its own learned weights</li>
-              <li>These graph convolutions replace the matrix products inside a GRU cell (DCGRU)</li>
+              <li>Forward walk <code>P_f = D_out⁻¹ A</code>: information along road direction <span class="step-shape">[207, 207] downstream transition</span></li>
+              <li>Reverse walk <code>P_r = D_in⁻¹ Aᵀ</code>: queues backing up against flow <span class="step-shape">[207, 207] upstream transition</span></li>
+              <li>Expand 1..K hops: <code>[I, P_f, P_r, P_f², P_r²]</code> <span class="step-shape">2K + 1 = 5 spatial supports</span></li>
+              <li>Replace linear gates inside GRU with DiffusionConv <span class="step-shape">space + time fused at every step</span></li>
             </ol>
-            <p class="cap">The map shows row <i>i</i> of <code>Σ Pᵏ</code>: how much the selected sensor reads from every other sensor. It is computed here from <code>adj_mx.pkl</code>, the same matrix the model was trained with.</p>
+            <p class="cap">Node positions are real METR-LA GPS coordinates across Los Angeles County; diffusion weights are computed live in-browser from <code>adj_mx.pkl</code>.</p>
           </div>
         </div>
         <div class="viz">
-          <span class="label">Encoder–decoder, unrolled <span class="tag real">architecture</span></span>
+          <span class="label">12 → 12 Encoder–Decoder unrolled <span class="tag real">architecture</span></span>
           <svg id="encdec" viewBox="0 0 1000 150" role="img" aria-label="DCRNN encoder decoder"></svg>
-          <p class="cap">The encoder reads the 12 past steps for all 207 sensors at once. The decoder then steps 12 times into the future, and steps 1, 3, 6 and 12 become the 5, 15, 30 and 60-minute forecasts.</p>
+          <p class="cap">Encoder consumes 12 past steps (`[B,12,207,7]`) into state `H [B,207,64]`; autoregressive decoder unrolls 12 future steps and extracts indices 1, 3, 6, 12 (+5, +15, +30, +60 min).</p>
         </div>
         <div class="dive-grid">
           <dl class="spec" id="dcSpec"></dl>
           <div class="stack">
             <details class="sub"><summary>Hyperparameter search (validation MAE)</summary><div class="sub-body scroll"><table id="srch-dcrnn"></table></div></details>
-            <details class="sub"><summary>Where it lives in the code</summary><div class="sub-body"><pre>src/phase2/models/dcrnn.py      DiffusionConv, DCGRUCell
-src/phase2/graph.py             adjacency + variants
-configs/phase2/final/dcrnn.yaml picked config</pre></div></details>
+            <details class="sub"><summary>Where DCRNN lives in the code</summary><div class="sub-body"><pre>src/phase2/models/dcrnn.py       DiffusionConv, DCGRUCell, DCRNN
+src/phase2/graph.py              directed + control graph variants
+configs/phase2/final/dcrnn.yaml  Candidate 2 (h=64, K=2, 131,009 params)</pre></div></details>
           </div>
         </div>
       </div>
     </details>
 
     <details class="dive" id="dv-ctl">
-      <summary><div class="what"><h3>The controls: is it really the road graph?</h3><p>Same model, three graphs. Only one of them is the real road network.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <summary><div class="what"><h3>The controls: real road vs. identity vs. shuffled</h3><p>How we proved true Los Angeles road geometry (not just extra model capacity) drove the gains.</p></div><span class="chev" aria-hidden="true"></span></summary>
       <div class="dive-body">
         <div class="dive-grid wide">
           <div class="viz">
-            <span class="label">Links of sensor <b id="ctlSensor" class="mono">—</b> under each graph</span>
-            <div class="toggles" id="ctlToggles"><button class="tg solo" data-g="real" aria-pressed="true">Real road graph</button><button class="tg solo" data-g="identity" aria-pressed="false">Identity</button><button class="tg solo" data-g="shuffled" aria-pressed="false">Shuffled</button></div>
-            <svg id="ctlMap" viewBox="0 0 560 330" role="img" aria-label="Graph variants on a map"></svg>
+            <span class="label">Connections of LA sensor <b id="ctlSensor" class="mono">—</b> under each graph <span class="tag real">METR-LA map</span></span>
+            <div class="toggles" id="ctlToggles">
+              <button class="tg solo" data-g="real" aria-pressed="true">Real LA road graph</button>
+              <button class="tg solo" data-g="identity" aria-pressed="false">Identity (self only)</button>
+              <button class="tg solo" data-g="shuffled" aria-pressed="false">Shuffled (wrong links)</button>
+            </div>
+            <svg id="ctlMap" viewBox="0 0 560 330" role="img" aria-label="Graph control variants plotted over Los Angeles sensors"></svg>
           </div>
           <div class="stack">
             <div id="ctlText" class="prose"></div>
-            <p class="cap">The shuffle here is drawn in your browser with its own random derangement. The project used a fixed derangement (seed 0) from <code>src/phase2/graph.py</code>. Both keep every sensor's number of links and change who they link to.</p>
+            <p class="cap">Shuffled preserves every sensor's exact degree while scrambling target sensors across Los Angeles County (`src/phase2/graph.py`, seed 0 in repo). Even though shuffled helps GAT slightly (`+0.040`) due to network-wide rush hours, the real road graph wins decisively (`+0.149` over shuffled; `+0.189` over identity).</p>
           </div>
         </div>
       </div>
@@ -397,18 +555,24 @@ configs/phase2/final/dcrnn.yaml picked config</pre></div></details>
 
 <!-- 06 ---------------------------------------------------------------- -->
 <section class="stop" id="s6">
-  <div class="stop-head"><div class="num">06</div><div><div class="who">Case study · real test predictions</div><h2>One Monday on sensor 717468</h2></div></div>
+  <div class="stop-head"><div class="num">06</div><div><div class="who">Case study · real Los Angeles test predictions</div><h2>One Monday on sensor 717468</h2></div></div>
   <div class="cols">
     <div class="prose">
-      <p>11 June 2012, 14:00 to 23:00. This sensor sits in a heavy evening jam, with speeds near 10 for hours, then recovers sharply around 20:00. The grey line is what happened. Each coloured line is a model's forecast made 15 or 60 minutes earlier.</p>
-      <p>Persistence is always late by exactly the horizon. Recoveries are the hard part, and that is where models disagree most. Switch to 60 minutes and watch them guess at the moment the jam clears.</p>
-      <p class="quiet">One sensor and one day, picked to show behaviour. The averages in section 05 are the result, not this chart. Hover the chart to read values.</p>
+      <p><b>Monday 11 June 2012, 14:00 to 23:00</b> (North central coordinate region of METR-LA, 34.097°N, 118.314°W). Sensor 717468 sits in a heavy afternoon jam near 10 speed units, briefly clears around 17:00, drops into a sharp 19:00 re-jam, then recovers around 20:00.</p>
+      <p><b>Persistence</b> is always wrong by one full horizon. Pick a story moment above the chart or hover/click any timestamp to see how each model handles sudden jams and recoveries 15 or 60 minutes ahead.</p>
+      <p class="quiet">One illustrative sensor day from the held-out test split; the statistical evidence sits in the Section 05 tables across all 207 sensors and 6,844 test origins.</p>
     </div>
     <div class="panel">
       <div class="toggles" id="hzToggles"><button class="tg solo" data-h="15min" aria-pressed="false">15 min ahead</button><button class="tg solo" data-h="60min" aria-pressed="true">60 min ahead</button></div>
       <div class="toggles" id="csToggles"></div>
-      <svg id="caseChart" viewBox="0 0 560 280" role="img" aria-label="Actual versus forecast speed for sensor 717468"></svg>
-      <div class="readout" id="caseRead">&nbsp;</div>
+      <div class="toggles" id="caseMoments">
+        <button class="tg solo" data-idx="24" aria-pressed="false">Moment 1 · 17:00 early recovery</button>
+        <button class="tg solo" data-idx="48" aria-pressed="false">Moment 2 · 19:00 surprise re-jam</button>
+        <button class="tg solo" data-idx="66" aria-pressed="false">Moment 3 · 20:30 jam clears</button>
+      </div>
+      <svg id="caseChart" viewBox="0 0 560 280" role="img" aria-label="Actual versus forecast speed for LA sensor 717468"></svg>
+      <div class="readout" id="caseRead">Hover or click the curve — or pick a moment above — to compare exact forecasts.</div>
+      <div class="cap" id="caseNote" style="margin-top:4px"></div>
     </div>
   </div>
 </section>
@@ -418,24 +582,30 @@ configs/phase2/final/dcrnn.yaml picked config</pre></div></details>
   <div class="stop-head"><div class="num">07</div><div><div class="who">Member 5 · simulated signal control</div><h2>From a forecast to a green light</h2></div></div>
   <div class="cols">
     <div class="prose">
-      <p>Does a better forecast help a traffic signal? We simulated one signalised approach, driven by real test-period speeds from the 30 most congested sensors and by each model's real forecasts: 3,780 runs over 18 weekdays, 06:00–21:00.</p>
-      <p>The big win is <b>adaptive versus fixed timing</b>: from 2,179 seconds of mean delay per vehicle down to about 27. Which forecast feeds the controller matters far less. Even a perfect forecast saves only 0.40 s against XGBoost + HA.</p>
-      <p class="quiet">Software only. Arrivals are generated from speed by an assumed rule. Nothing was tested on a real signal.</p>
+      <p>Does lower forecast MAE translate into real intersection delay savings? We simulated one signalised Los Angeles approach fed by <b>real test weekday speeds</b> from the <b>30 most congested METR-LA sensors</b> (18 weekdays, 06:00–21:00 = <b>3,780 runs</b>).</p>
+      <p><b>Honest verdict:</b> Switching from fixed timing (`2,179 s` queue spillback) to any adaptive timing (`~27 s`) is a huge win. Yet the difference <i>between</i> forecast models — even comparing DCRNN vs. a perfect oracle forecast — is under <b>0.5 seconds per vehicle</b>.</p>
+      <p class="quiet">Software queue simulation only (Webster delay + Greenshields speed-arrival rule). Never tested on live traffic signals.</p>
     </div>
     <div class="stack">
-      <div class="panel"><span class="label">Mean delay per vehicle, seconds</span><svg id="simBig" viewBox="0 0 560 120" role="img" aria-label="Fixed timing versus adaptive delay"></svg></div>
+      <div class="panel"><span class="label">Mean delay per vehicle, real METR-LA speeds (3,780 runs) <span class="tag real">simulated w/ real forecasts</span></span><svg id="simBig" viewBox="0 0 560 120" role="img" aria-label="Fixed timing versus adaptive delay"></svg></div>
       <div class="panel"><span class="label">Zoom: adaptive controllers only (axis starts at 26 s)</span><svg id="simZoom" viewBox="0 0 560 210" role="img" aria-label="Delay by forecast source"></svg></div>
     </div>
   </div>
   <div class="dives">
     <details class="dive" id="dv-sig">
-      <summary><div class="what"><h3>Watch the two controllers</h3><p>Same arrivals, two signals: one on a fixed clock, one that stretches green when the queue and forecast say so.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <summary><div class="what"><h3>Watch the two controllers side-by-side</h3><p>Identical rush-hour arrivals: fixed green clock vs. queue + forecast adaptive timing (with 3× speed &amp; jump to rush hour).</p></div><span class="chev" aria-hidden="true"></span></summary>
       <div class="dive-body">
         <div class="viz">
-          <span class="label">Signal simulation <span class="tag toy">illustration</span></span>
+          <span class="label">Single LA approach queue simulation · software only <span class="tag toy">illustration</span></span>
           <canvas class="sim" id="sigCanvas" aria-label="Animated comparison of fixed and adaptive signal timing"></canvas>
-          <div class="btnrow"><button class="btn primary" id="sigPlay">Pause</button><button class="btn" id="sigReset">Restart</button><span class="readout" id="sigRead"></span></div>
-          <p class="cap">A simplified animation of the policy in <code>src/phase2/signal_sim/</code>. Cars arrive in a rush-hour wave. The fixed signal gives 50% green no matter what. The adaptive one uses the current queue plus a 15/30-minute speed forecast to set the next cycle's green time. The project's numbers come from the full simulation, not from this animation.</p>
+          <div class="btnrow">
+            <button class="btn primary" id="sigPlay">Pause</button>
+            <button class="btn" id="sigSpeed">Speed: 1×</button>
+            <button class="btn" id="sigRush">Jump to Rush Hour</button>
+            <button class="btn" id="sigReset">Restart</button>
+            <span class="readout" id="sigRead"></span>
+          </div>
+          <p class="cap">Visualizes the Webster + forecast green-split logic from <code>src/phase2/signal_sim/</code>. Reported project numbers come from the 3,780 real-data simulation runs, not this canvas animation.</p>
         </div>
       </div>
     </details>
@@ -444,31 +614,48 @@ configs/phase2/final/dcrnn.yaml picked config</pre></div></details>
 
 <!-- 08 ---------------------------------------------------------------- -->
 <section class="stop" id="s8">
-  <div class="stop-head"><div class="num">08</div><div><div class="who">What we can and cannot claim</div><h2>Limits, and how to run it</h2></div></div>
+  <div class="stop-head"><div class="num">08</div><div><div class="who">Scientific boundaries, Viva Q&amp;A &amp; reproduction</div><h2>Honest limits &amp; how to run it</h2></div></div>
   <ul class="limits">
-    <li><b>Units and clock.</b> Speeds are in source units (likely mph). The timezone was never officially confirmed.</li>
-    <li><b>One city, one season.</b> One chronological split, tested on June 2012. Intervals are not adjusted for multiple comparisons.</li>
-    <li><b>Maybe under-trained.</b> GAT finals stopped at the 60-epoch limit and DCRNN at its 50-minute cap (14 epochs).</li>
-    <li><b>Not a fair graph test vs XGBoost + HA.</b> XGBoost + HA gets historical-average features that the deep models do not.</li>
-    <li><b>Attention is not causation.</b> Attention weights show what the model used, not how traffic really spreads.</li>
-    <li><b>Simulated signals.</b> Every signal-control number comes from software.</li>
+    <li><b>Los Angeles dataset metadata.</b> Speeds come in source units (likely mph) on the stored clock (timezone unverified); regions are coordinate bounding boxes, not freeway route names.</li>
+    <li><b>Single city &amp; season.</b> 4 months (Mar–Jun 2012) on one chronological split; bootstrap intervals are unadjusted for multiple comparisons.</li>
+    <li><b>Wall-clock &amp; epoch caps.</b> GAT finals stopped at the 60-epoch limit and DCRNN at its 50-minute cap (14 epochs on Apple M3 MPS), so both may be slightly under-trained.</li>
+    <li><b>Feature difference vs. XGBoost + HA.</b> XGBoost + HA receives 4 target-time Historical Average lookup features that deep models do not; <code>xgboost_32</code> vs <code>gat</code>/<code>dcrnn</code> is the feature-matched comparison.</li>
+    <li><b>Attention is not causal proof.</b> GAT weights show what the model relied on statistically — not physical vehicle shockwave mechanics.</li>
+    <li><b>Software-only signal study.</b> Arrivals follow an assumed Greenshields rule at one simulated approach, not live signal hardware.</li>
   </ul>
-  <div class="cols" style="margin-top:32px">
+
+  <div class="dives">
+    <details class="dive" id="dv-viva">
+      <summary><div class="what"><h3>Quick Viva Q&amp;A Cheat Sheet — Click to Unfold</h3><p>8 common cross-questions with short, defensible answers grounded in our repo outputs.</p></div><span class="chev" aria-hidden="true"></span></summary>
+      <div class="dive-body">
+        <details class="sub"><summary>1. Why treat exact 0 as missing instead of a stopped traffic jam?</summary><div class="sub-body"><p class="cap">8.1% of cells (575,302 readings) are exact zeros, including 97 blocks where all 207 LA sensors drop to 0 simultaneously — recording failures. Following the upstream DCRNN METR-LA benchmark, we mask zeros out and never fill target zeros.</p></div></details>
+        <details class="sub"><summary>2. How do you prevent data leakage in inputs and splits?</summary><div class="sub-body"><p class="cap">Strict 70/10/20 chronological split; origins dropping the last 12 steps before boundaries so +60m targets never cross splits; causal forward-fill (past only) + training-only medians and global z-scaler (58.584 / 12.823).</p></div></details>
+        <details class="sub"><summary>3. Why did a "wrong" shuffled graph still beat GAT identity (+0.040)?</summary><div class="sub-body"><p class="cap">Because city-wide LA rush hours correlate across freeways, mixing even random sensors adds a small global cue (+0.040). Yet the true LA road graph beats shuffled by +0.149 [0.124, 0.174], proving ~79% of the gain comes from true road links. We reported H2 as contradicted honestly.</p></div></details>
+        <details class="sub"><summary>4. Why did DCRNN beat GAT (3.734 vs 4.175 at 60 min)?</summary><div class="sub-body"><p class="cap">GAT mixes 1-hop undirected neighbours once after GRU encoding (22,788 params), whereas DCRNN mixes K=2 hop forward &amp; reverse diffusion inside every recurrent gate of both encoder and 12-step decoder (131,009 params).</p></div></details>
+        <details class="sub"><summary>5. Why did GAT lose to Phase 1 XGBoost + HA (3.688)?</summary><div class="sub-body"><p class="cap">XGBoost + HA gets 4 explicit target-time Historical Average features ("normal speed at that sensor, weekday, and hour") that deep models were not given. Against feature-matched XGBoost-32 (4.393), both GAT (4.175) and DCRNN (3.734) win clearly.</p></div></details>
+        <details class="sub"><summary>6. Do GAT attention weights prove traffic shockwaves?</summary><div class="sub-body"><p class="cap">No. Exported seed-42 weights (~90.3% on neighbours, ~9.7% on self) describe what the network relied on statistically, never physical fluid causality.</p></div></details>
+        <details class="sub"><summary>7. Why does forecast choice change signal delay by under 0.5 s/vehicle?</summary><div class="sub-body"><p class="cap">In congestion, switching from fixed timing (~2,179 s) to any adaptive controller (~27 s) captures virtually all the gain. Once green time responds to queue + approximate speed, even a perfect oracle forecast adds only +0.40 s/veh over XGBoost + HA.</p></div></details>
+        <details class="sub"><summary>8. How do you know Phase 1 and Phase 2 numbers are strictly comparable?</summary><div class="sub-body"><p class="cap"><code>phase2_check_phase1_frozen.py</code> checks zero edits since <code>phase1-final</code>, and Member 4's scorer passes a parity gate (max |ΔMAE| = 0.0) across the exact same 1,245,052 valid 5-min test targets.</p></div></details>
+      </div>
+    </details>
+  </div>
+
+  <div class="cols" style="margin-top:28px">
     <div class="prose">
-      <h3>Reproduce</h3>
-      <p class="quiet">Phase 1 files are frozen, and the Phase 2 scorer reproduces every Phase 1 metric exactly. Training took 11.2 hours on an Apple M3 (MPS). There are 107 Phase 2 tests.</p>
+      <h3>Reproduce Everything</h3>
+      <p class="quiet">Phase 1 files are frozen at tag <code>phase1-final</code>. Full Phase 2 training took 11.2 hours on Apple M3 (MPS) with 107 automated Phase 2 unit tests (185 total across Phases 1 + 2).</p>
     </div>
     <pre>pip install -r requirements-phase2.txt
-python scripts/complete_phase1.py                    # Phase 1 end to end
+python scripts/phase2_check_phase1_frozen.py         # verify Phase 1 untouched
 python -m src.phase2.cli all --runs configs/phase2/runs_gat.yaml
 python -m src.phase2.cli all --runs configs/phase2/runs_dcrnn.yaml
-python scripts/phase2_eval_all.py                    # score everything
-python scripts/phase2_run_signal_sim.py              # signal simulation
+python scripts/phase2_eval_all.py                    # metrics, bootstrap, H0-H5
+python scripts/phase2_run_signal_sim.py              # 3,780-run signal sim
 python -m unittest discover -s tests -p "test_phase2_*.py"</pre>
   </div>
 </section>
 </main>
-<footer class="wrap">Every number on this page is read from <code>data/metadata/</code> and <code>configs/</code> in the project repository by <code>demo/build_demo.py</code>. Panels marked <span class="tag toy">toy</span> or <span class="tag toy">illustration</span> show a mechanism, not a project result. Use ← → or PgUp/PgDn to step through the sections when presenting.</footer>
+<footer class="wrap">Los Angeles County METR-LA Forecast Lab · Every measured number is exported by <code>demo/build_demo.py</code> from <code>data/metadata/</code> and <code>configs/</code>. Panels tagged <span class="tag toy">toy</span> or <span class="tag toy">illustration</span> visualize mechanisms, not project results. Press ← → or PgUp/PgDn to step through sections.</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
